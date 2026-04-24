@@ -1,0 +1,7 @@
+{
+  "name": "Receipt",
+  "description": "A simple and clean receipt management system to capture, store, and organize your receipts with AI-powered OCR.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

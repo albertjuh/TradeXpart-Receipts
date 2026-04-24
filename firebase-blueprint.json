@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "receipt": {
+      "title": "Receipt",
+      "description": "A digital record of a purchase receipt.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the receipt." },
+        "userId": { "type": "string", "description": "The UID of the user who owns the receipt." },
+        "storeName": { "type": "string", "description": "Name of the store where the purchase was made." },
+        "amount": { "type": "number", "description": "The total amount spent." },
+        "date": { "type": "string", "format": "date-time", "description": "The date on the receipt." },
+        "category": { "type": "string", "description": "Category of the expense (e.g., Food, Transport)." },
+        "imageUrl": { "type": "string", "description": "URL to the stored image of the receipt." },
+        "notes": { "type": "string", "description": "Optional notes about the receipt." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the record was created." }
+      },
+      "required": ["userId", "storeName", "amount", "date", "category"]
+    }
+  },
+  "firestore": {
+    "/receipts/{receiptId}": {
+      "schema": "receipt",
+      "description": "Collection of all user receipts."
+    }
+  }
+}
