@@ -15,7 +15,7 @@ const __dirname = path.dirname(__filename);
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 async function extractReceiptData(base64Image: string, mimeType: string) {
-  const model = "gemini-3-flash-preview";
+  const model = "gemini-1.5-flash";
   const prompt = "Extract the store name, total amount (in Tanzanian Shillings), date, and suggest a category (Food, Transport, Business, Shopping, Utilities, Other) from this receipt. Return the data in JSON format. Ensure the amount is a number representing TZS.";
 
   const response = await ai.models.generateContent({
@@ -80,6 +80,20 @@ async function startServer() {
     res.json(receipts);
   });
 
+  app.post("/api/receipts/analyze", async (req, res) => {
+    const { image, mimeType } = req.body;
+    if (!image) return res.status(400).json({ error: "Missing image data" });
+
+    try {
+      const base64 = image.split(",")[1] || image;
+      const extractedData = await extractReceiptData(base64, mimeType || "image/jpeg");
+      res.json(extractedData);
+    } catch (error) {
+      console.error("Analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze receipt" });
+    }
+  });
+
   app.post("/api/receipts", (req, res) => {
     try {
       const newReceipt = {
@@ -135,16 +149,16 @@ async function startServer() {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
     try {
-      // 1. Find or create "Receipt" folder
+      // 1. Find or create "tradexparts" folder
       const folderResponse = await drive.files.list({
-        q: "name = 'Receipt' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        q: "name = 'tradexparts' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
         fields: "files(id, name)",
       });
 
       let folderId = folderResponse.data.files?.[0]?.id;
 
       if (!folderId) {
-        return res.json({ message: "No 'Receipt' folder found. Please create one in your Drive and add receipts." });
+        return res.json({ message: "No 'tradexparts' folder found. Please create one in your Drive and add receipts." });
       }
 
       // 2. List images in that folder
@@ -154,12 +168,11 @@ async function startServer() {
       });
 
       const files = filesResponse.data.files || [];
-      const processedReceipts = [];
-
-      for (const file of files) {
-        // Check if already processed
-        if (receipts.some(r => r.driveFileId === file.id)) continue;
-
+      
+      // Process files in parallel for better performance
+      const newFiles = files.filter(file => !receipts.some(r => r.driveFileId === file.id));
+      
+      const processedReceipts = await Promise.all(newFiles.map(async (file) => {
         try {
           // Fetch file content
           const response = await drive.files.get(
@@ -174,7 +187,7 @@ async function startServer() {
           // Process with Gemini
           const extractedData = await extractReceiptData(base64, mimeType);
 
-          const newReceipt = {
+          return {
             id: randomUUID(),
             ...extractedData,
             driveFileId: file.id,
@@ -182,19 +195,21 @@ async function startServer() {
             createdAt: new Date().toISOString(),
             source: "Google Drive"
           };
-
-          receipts.push(newReceipt);
-          processedReceipts.push(newReceipt);
         } catch (fileError) {
-          console.error(`Error processing file ${file.name}:`, fileError);
+          console.error(`[AI] Error processing file ${file.name}:`, fileError);
+          return null;
         }
-      }
+      }));
+
+      // Filter out failures and add to store
+      const successfulReceipts = processedReceipts.filter(r => r !== null) as any[];
+      receipts.push(...successfulReceipts);
       
       res.json({ 
-        message: processedReceipts.length > 0 
-          ? `Successfully processed ${processedReceipts.length} new receipts from Drive.` 
+        message: successfulReceipts.length > 0 
+          ? `Successfully processed ${successfulReceipts.length} new receipts from Drive.` 
           : "No new receipts found to process.",
-        processedCount: processedReceipts.length
+        processedCount: successfulReceipts.length
       });
 
     } catch (error) {

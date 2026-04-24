@@ -1,6 +1,6 @@
 {
-  "name": "Receipt",
-  "description": "A simple and clean receipt management system to capture, store, and organize your receipts with AI-powered OCR.",
+  "name": "tradexparts",
+  "description": "A high-performance receipt management system for trade and parts logistics, powered by AI OCR.",
   "requestFramePermissions": [
     "camera"
   ]

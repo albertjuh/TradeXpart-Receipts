@@ -8,7 +8,6 @@ import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, Trend
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { Receipt, CATEGORIES } from './types';
-import { extractReceiptData } from './services/geminiService';
 
 export default function App() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -98,7 +97,16 @@ export default function App() {
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = event.target?.result as string;
-        const data = await extractReceiptData(base64, file.type);
+        
+        // Analyze via backend
+        const analyzeResponse = await fetch('/api/receipts/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, mimeType: file.type })
+        });
+
+        if (!analyzeResponse.ok) throw new Error("Failed to analyze");
+        const data = await analyzeResponse.json();
         
         const response = await fetch('/api/receipts', {
           method: 'POST',
@@ -177,7 +185,7 @@ export default function App() {
             <Layers className="text-black w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight leading-none">RECEIPT</h1>
+            <h1 className="text-xl font-bold tracking-tight leading-none uppercase">tradexparts</h1>
             <span className="text-[10px] font-mono text-brand-accent tracking-widest uppercase">v1.0.0 // AI-POWERED</span>
           </div>
         </div>
@@ -466,10 +474,10 @@ export default function App() {
                       <div className="w-16 h-16 bg-brand-card rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-all border border-brand-border group-hover:border-brand-accent">
                         <Camera className="w-8 h-8 text-brand-accent" />
                       </div>
-                      <p className="text-sm font-bold uppercase tracking-tighter">Upload Transaction Image</p>
-                      <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2">PNG, JPG // MAX 10MB</p>
+                      <p className="text-sm font-bold uppercase tracking-tighter text-center">Capture or Upload Receipt</p>
+                      <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2 text-center">Take photo with camera or pick from library</p>
                     </div>
-                    <input type="file" className="hidden" accept="image/*" onChange={handleAddReceipt} />
+                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleAddReceipt} />
                   </label>
                   
                   <div className="relative">
