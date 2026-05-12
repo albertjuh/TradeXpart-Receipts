@@ -254,9 +254,16 @@ async function startServer() {
         range: "Sheet1!A:F",
       });
       const rows = response.data.values || [];
-      const data = rows.slice(1).map((row: string[]) => ({
-        date: row[0], vendor: row[1], amount: row[2],
-        category: row[3], status: row[4], raw: row[5],
+      const data = rows.slice(1).map((row: string[], index: number) => ({
+        id: String(index + 1),
+        storeName: row[1] || 'Unknown',
+        amount: parseFloat(row[2]) || 0,
+        date: row[0] || new Date().toISOString(),
+        category: row[3] || 'Other',
+        notes: row[5] || '',
+        imageUrl: '',
+        createdAt: new Date().toISOString(),
+        source: 'WhatsApp'
       }));
       res.json(data);
     } catch (error) {
