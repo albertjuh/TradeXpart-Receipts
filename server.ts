@@ -240,6 +240,30 @@ async function startServer() {
     }
   });
 
+
+  // Google Sheets endpoint
+  app.get("/api/sheets/receipts", async (req, res) => {
+    try {
+      const auth = new google.auth.GoogleAuth({
+        credentials: JSON.parse(require("fs").readFileSync("/root/.hermes/google-credentials.json", "utf8")),
+        scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+      });
+      const sheets = google.sheets({ version: "v4", auth });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: "1wp0RE5jjO_t32F0rHYBpOgGZajD-i3wy4uzcXxekndk",
+        range: "Sheet1!A:F",
+      });
+      const rows = response.data.values || [];
+      const data = rows.slice(1).map((row: string[]) => ({
+        date: row[0], vendor: row[1], amount: row[2],
+        category: row[3], status: row[4], raw: row[5],
+      }));
+      res.json(data);
+    } catch (error) {
+      console.error("Sheets error:", error);
+      res.status(500).json({ error: "Failed to fetch sheets data" });
+    }
+  });
   app.delete("/api/receipts/:id", (req, res) => {
     const { id } = req.params;
     receipts = receipts.filter(r => r.id !== id);
