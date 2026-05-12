@@ -254,7 +254,7 @@ async function startServer() {
         range: "Sheet1!A:F",
       });
       const rows = response.data.values || [];
-      const data = rows.slice(1).map((row: string[], index: number) => ({
+      const data = rows.slice(1).filter((row: string[]) => row[0] && row[0].match(/^\d{4}-\d{2}-\d{2}/)).map((row: string[], index: number) => ({
         id: String(index + 1),
         storeName: row[1] || 'Unknown',
         amount: parseFloat(row[2]) || 0,
