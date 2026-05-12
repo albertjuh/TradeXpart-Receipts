@@ -23,7 +23,7 @@ export default function App() {
   // Fetch from backend API
   const fetchReceipts = async (retries = 3) => {
     try {
-      const response = await fetch('/api/receipts');
+      const response = await fetch('/api/sheets/receipts');
       const contentType = response.headers.get("content-type");
       
       if (response.ok && contentType && contentType.includes("application/json")) {
