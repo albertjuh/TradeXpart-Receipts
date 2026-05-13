@@ -358,6 +358,7 @@ export default function App() {
 
             <AnimatePresence mode="popLayout">
               {filteredReceipts.length > 0 ? (
+                <>
                 <div className="grid grid-cols-1 gap-3">
                   {filteredReceipts.slice(0, visibleCount).map((receipt) => (
                     <motion.div
@@ -419,6 +420,7 @@ export default function App() {
                     Load More ({filteredReceipts.length - visibleCount} remaining)
                   </button>
                 )}
+                </>
               ) : (
                 <div className="py-20 text-center glass rounded-3xl border-dashed border-brand-border">
                   <div className="w-16 h-16 bg-brand-card rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand-border">
