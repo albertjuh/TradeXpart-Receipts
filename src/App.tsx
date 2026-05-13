@@ -363,20 +363,20 @@ export default function App() {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.98 }}
                       onClick={() => setSelectedReceipt(receipt)}
-                      className="glass p-5 rounded-2xl flex items-center justify-between cursor-pointer hover:border-brand-accent/30 transition-all group relative overflow-hidden"
+                      className="glass p-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:border-brand-accent/30 transition-all group relative overflow-hidden"
                     >
                       <div className="absolute top-0 left-0 w-1 h-full bg-brand-accent opacity-0 group-hover:opacity-100 transition-all" />
                       
                       <div className="flex items-center gap-5">
-                        <div className="w-14 h-14 bg-brand-bg rounded-xl overflow-hidden flex items-center justify-center border border-brand-border group-hover:border-brand-accent/20 transition-all">
+                        <div className="w-8 h-8 bg-brand-bg rounded-lg overflow-hidden flex items-center justify-center border border-brand-border group-hover:border-brand-accent/20 transition-all flex-shrink-0">
                           {receipt.imageUrl ? (
                             <img src={receipt.imageUrl} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all" referrerPolicy="no-referrer" />
                           ) : (
-                            <Camera className="w-5 h-5 text-brand-text-muted" />
+                            <Camera className="w-3.5 h-3.5 text-brand-text-muted" />
                           )}
                         </div>
                         <div>
-                          <div className="font-bold text-sm tracking-tight group-hover:text-brand-accent transition-colors uppercase">{receipt.storeName}</div>
+                          <div className="font-bold text-xs tracking-tight group-hover:text-brand-accent transition-colors uppercase">{receipt.storeName}</div>
                           <div className="text-[10px] font-mono text-brand-text-muted flex items-center gap-2 mt-1">
                             <span>{format(parseISO(receipt.date), 'dd.MM.yyyy')}</span>
                             <span className="text-brand-border">/</span>
@@ -395,7 +395,7 @@ export default function App() {
                       
                       <div className="flex items-center gap-6">
                         <div className="text-right">
-                          <div className="text-lg font-bold font-mono tracking-tighter">
+                          <div className="text-sm font-bold font-mono tracking-tighter">
                             <span className="text-brand-accent text-xs mr-1">TSh</span>
                             {receipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                           </div>
