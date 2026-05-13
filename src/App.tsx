@@ -69,7 +69,29 @@ export default function App() {
 
     // Poll for updates every 10 seconds
     const interval = setInterval(() => fetchReceipts(0), 10000);
-    return () => {
+    const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+
+  const reportData = useMemo(() => {
+    const now = new Date();
+    let start: Date;
+    if (reportPeriod === 'daily') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (reportPeriod === 'weekly') {
+      start = new Date(now);
+      start.setDate(now.getDate() - 7);
+    } else {
+      start = startOfMonth(now);
+    }
+    const filtered = receipts.filter(r => {
+      try { return new Date(r.date) >= start; } catch { return false; }
+    });
+    const total = filtered.reduce((s, r) => s + r.amount, 0);
+    const byCategory: Record<string, number> = {};
+    filtered.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + r.amount; });
+    return { total, count: filtered.length, byCategory: Object.entries(byCategory).sort((a,b) => b[1]-a[1]) };
+  }, [receipts, reportPeriod]);
+
+  return () => {
       clearTimeout(timeout);
       clearInterval(interval);
     };
@@ -343,6 +365,43 @@ export default function App() {
             <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-brand-accent rounded-full" />
+                {/* Reports Panel */}
+                <div className="glass rounded-2xl p-4 mb-4 border border-brand-border">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Spending Report</h2>
+                    <div className="flex gap-1">
+                      {(['daily', 'weekly', 'monthly'] as const).map(p => (
+                        <button
+                          key={p}
+                          onClick={() => setReportPeriod(p)}
+                          className={`px-2.5 py-1 rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all ${reportPeriod === p ? 'bg-brand-accent text-black font-bold' : 'text-brand-text-muted border border-brand-border hover:border-brand-accent/50'}`}
+                        >{p}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-between mb-3">
+                    <div>
+                      <div className="text-[10px] font-mono text-brand-text-muted uppercase">Total Spent</div>
+                      <div className="text-2xl font-bold font-mono tracking-tighter"><span className="text-brand-accent text-xs mr-1">TSh</span>{reportData.total.toLocaleString()}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-mono text-brand-text-muted uppercase">Transactions</div>
+                      <div className="text-2xl font-bold font-mono">{reportData.count}</div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    {reportData.byCategory.slice(0, 5).map(([cat, amt]) => (
+                      <div key={cat} className="flex items-center gap-2">
+                        <div className="text-[9px] font-mono text-brand-text-muted uppercase w-20 truncate">{cat}</div>
+                        <div className="flex-1 h-1.5 bg-brand-border rounded-full overflow-hidden">
+                          <div className="h-full bg-brand-accent rounded-full" style={{width: `${(amt/reportData.total)*100}%`}} />
+                        </div>
+                        <div className="text-[9px] font-mono text-white w-16 text-right">TSh {amt.toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Transaction Log</h2>
               </div>
               <select 
