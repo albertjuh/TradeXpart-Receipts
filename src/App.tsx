@@ -19,6 +19,7 @@ export default function App() {
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [driveConnected, setDriveConnected] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(8);
 
   // Fetch from backend API
   const fetchReceipts = async (retries = 3) => {
@@ -163,6 +164,8 @@ export default function App() {
       return matchesSearch && matchesCategory && matchesDate;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [receipts, search, filterCategory, dateRange]);
+
+  useEffect(() => { setVisibleCount(8); }, [search, filterCategory, dateRange]);
 
   const totalSpent = useMemo(() => {
     return filteredReceipts.reduce((sum, r) => sum + r.amount, 0);
@@ -355,7 +358,7 @@ export default function App() {
             <AnimatePresence mode="popLayout">
               {filteredReceipts.length > 0 ? (
                 <div className="grid grid-cols-1 gap-3">
-                  {filteredReceipts.map((receipt) => (
+                  {filteredReceipts.slice(0, visibleCount).map((receipt) => (
                     <motion.div
                       key={receipt.id}
                       layout
@@ -407,6 +410,14 @@ export default function App() {
                     </motion.div>
                   ))}
                 </div>
+                {filteredReceipts.length > visibleCount && (
+                  <button
+                    onClick={() => setVisibleCount(v => v + 8)}
+                    className="w-full mt-3 py-2.5 text-[10px] font-mono uppercase tracking-widest text-brand-text-muted border border-brand-border rounded-xl hover:border-brand-accent/50 hover:text-brand-accent transition-all"
+                  >
+                    Load More ({filteredReceipts.length - visibleCount} remaining)
+                  </button>
+                )}
               ) : (
                 <div className="py-20 text-center glass rounded-3xl border-dashed border-brand-border">
                   <div className="w-16 h-16 bg-brand-card rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand-border">
