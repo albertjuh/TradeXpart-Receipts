@@ -94,6 +94,31 @@ async function startServer() {
     }
   });
 
+  app.post("/api/receipts/analyze-pdf", async (req, res) => {
+    const { pdf } = req.body;
+    if (!pdf) return res.status(400).json({ error: "Missing PDF data" });
+    try {
+      const buffer = Buffer.from(pdf.split(",")[1] || pdf, "base64");
+      const { GoogleGenerativeAI } = await import("@google/genai") as any;
+      const genai = new GoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+      const extracted = await genai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{
+          parts: [
+            { text: "Extract store name, total amount in TZS, date, and category (Food/Transport/Business/Shopping/Utilities/Medical/Fuel/Other) from this receipt PDF text. Return JSON only." },
+            { inlineData: { data: pdf.split(",")[1] || pdf, mimeType: "application/pdf" } }
+          ]
+        }]
+      });
+      const text = extracted.text || "{}";
+      const clean = text.replace(/```json|```/g, "").trim();
+      res.json(JSON.parse(clean));
+    } catch (error) {
+      console.error("PDF analysis error:", error);
+      res.status(500).json({ error: "Failed to analyze PDF" });
+    }
+  });
+
   app.post("/api/receipts", (req, res) => {
     try {
       const newReceipt = {

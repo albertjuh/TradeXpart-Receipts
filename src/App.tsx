@@ -100,10 +100,11 @@ export default function App() {
         const base64 = event.target?.result as string;
         
         // Analyze via backend
-        const analyzeResponse = await fetch('/api/receipts/analyze', {
+        const isPDF = file.type === 'application/pdf';
+        const analyzeResponse = await fetch(isPDF ? '/api/receipts/analyze-pdf' : '/api/receipts/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, mimeType: file.type })
+          body: JSON.stringify(isPDF ? { pdf: base64 } : { image: base64, mimeType: file.type })
         });
 
         if (!analyzeResponse.ok) throw new Error("Failed to analyze");
@@ -488,7 +489,7 @@ export default function App() {
                       <p className="text-sm font-bold uppercase tracking-tighter text-center">Capture or Upload Receipt</p>
                       <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2 text-center">Take photo with camera or pick from library</p>
                     </div>
-                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleAddReceipt} />
+                    <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleAddReceipt} />
                   </label>
                   
                   <div className="relative">
