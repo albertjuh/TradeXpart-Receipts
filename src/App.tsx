@@ -26,11 +26,9 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
   
   const fetchReceipts = async (retries = 3) => {
     try {
-      const { data: sbData, error: sbError } = await supabase.from('expenses').select('*')
-      console.log('Supabase connected:', sbData, sbError)
       const response = await fetch('/api/sheets/receipts');
       const contentType = response.headers.get("content-type");
-      
+
       if (response.ok && contentType && contentType.includes("application/json")) {
         const data = await response.json();
         setReceipts(data);
