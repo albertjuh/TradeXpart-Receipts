@@ -20,7 +20,7 @@ export default function App() {
   const [driveConnected, setDriveConnected] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [visibleCount, setVisibleCount] = useState(8);
-
+const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   // Fetch from backend API
   const fetchReceipts = async (retries = 3) => {
     try {
@@ -69,29 +69,7 @@ export default function App() {
 
     // Poll for updates every 10 seconds
     const interval = setInterval(() => fetchReceipts(0), 10000);
-    const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
-
-  const reportData = useMemo(() => {
-    const now = new Date();
-    let start: Date;
-    if (reportPeriod === 'daily') {
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    } else if (reportPeriod === 'weekly') {
-      start = new Date(now);
-      start.setDate(now.getDate() - 7);
-    } else {
-      start = startOfMonth(now);
-    }
-    const filtered = receipts.filter(r => {
-      try { return new Date(r.date) >= start; } catch { return false; }
-    });
-    const total = filtered.reduce((s, r) => s + r.amount, 0);
-    const byCategory: Record<string, number> = {};
-    filtered.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + r.amount; });
-    return { total, count: filtered.length, byCategory: Object.entries(byCategory).sort((a,b) => b[1]-a[1]) };
-  }, [receipts, reportPeriod]);
-
-  return () => {
+    return () => {
       clearTimeout(timeout);
       clearInterval(interval);
     };
@@ -192,7 +170,25 @@ export default function App() {
 
   const totalSpent = useMemo(() => {
     return filteredReceipts.reduce((sum, r) => sum + r.amount, 0);
-  }, [filteredReceipts]);
+  }, [filteredReceipts]);const reportData = useMemo(() => {
+    const now = new Date();
+    let start: Date;
+    if (reportPeriod === 'daily') {
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (reportPeriod === 'weekly') {
+      start = new Date(now);
+      start.setDate(now.getDate() - 7);
+    } else {
+      start = startOfMonth(now);
+    }
+    const filtered = receipts.filter(r => {
+      try { return new Date(r.date) >= start; } catch { return false; }
+    });
+    const total = filtered.reduce((s, r) => s + r.amount, 0);
+    const byCategory: Record<string, number> = {};
+    filtered.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + r.amount; });
+    return { total, count: filtered.length, byCategory: Object.entries(byCategory).sort((a,b) => b[1]-a[1]) };
+  }, [receipts, reportPeriod]);
 
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
