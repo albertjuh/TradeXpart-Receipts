@@ -8,6 +8,7 @@ import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, Trend
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { Receipt, CATEGORIES } from './types';
+import { supabase } from './supabase';
 
 export default function App() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -22,8 +23,11 @@ export default function App() {
   const [visibleCount, setVisibleCount] = useState(8);
 const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   // Fetch from backend API
+  
   const fetchReceipts = async (retries = 3) => {
     try {
+      const { data: sbData, error: sbError } = await supabase.from('expenses').select('*')
+      console.log('Supabase connected:', sbData, sbError)
       const response = await fetch('/api/sheets/receipts');
       const contentType = response.headers.get("content-type");
       
