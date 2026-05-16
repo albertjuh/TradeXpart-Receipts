@@ -48,11 +48,23 @@ const STATUS_LABELS: Record<string, string> = {
 
 type Filter = 'all' | 'import' | 'export';
 
-export default function ShipmentsPage() {
+type Props = {
+  forceOpenModal?: boolean;
+  onForceOpenModalHandled?: () => void;
+};
+
+export default function ShipmentsPage({ forceOpenModal = false, onForceOpenModalHandled }: Props) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (forceOpenModal) {
+      setIsModalOpen(true);
+      onForceOpenModalHandled?.();
+    }
+  }, [forceOpenModal]);
 
   const fetchShipments = async () => {
     setLoading(true);
@@ -70,7 +82,7 @@ export default function ShipmentsPage() {
   const filtered = filter === 'all' ? shipments : shipments.filter(s => s.type === filter);
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-10">
+    <main className="max-w-6xl mx-auto px-6 pt-10 pb-28 md:pb-10">
       {/* Page header */}
       <div className="flex items-center justify-between mb-8">
         <div>

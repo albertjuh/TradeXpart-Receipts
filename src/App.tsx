@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet, LogOut } from 'lucide-react';
+import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet, LogOut, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import type { Session } from '@supabase/supabase-js';
@@ -28,6 +28,7 @@ export default function App() {
   const [visibleCount, setVisibleCount] = useState(8);
 const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [currentPage, setCurrentPage] = useState<'receipts' | 'shipments'>('receipts');
+  const [openShipmentModal, setOpenShipmentModal] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -281,7 +282,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
             <button 
               onClick={handleScanDrive}
               disabled={isScanning}
-              className="bg-brand-card text-brand-accent border border-brand-accent/30 px-4 py-2.5 rounded-full text-[10px] font-mono font-bold flex items-center gap-2 hover:bg-brand-accent/10 transition-all disabled:opacity-50"
+              className="hidden md:flex bg-brand-card text-brand-accent border border-brand-accent/30 px-4 py-2.5 rounded-full text-[10px] font-mono font-bold items-center gap-2 hover:bg-brand-accent/10 transition-all disabled:opacity-50"
             >
               {isScanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
               SCAN DRIVE
@@ -289,7 +290,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
           ) : (
             <a 
               href="/api/auth/google"
-              className="bg-brand-card text-brand-text-muted border border-brand-border px-4 py-2.5 rounded-full text-[10px] font-mono font-bold flex items-center gap-2 hover:text-white hover:border-brand-text-muted transition-all"
+              className="hidden md:flex bg-brand-card text-brand-text-muted border border-brand-border px-4 py-2.5 rounded-full text-[10px] font-mono font-bold items-center gap-2 hover:text-white hover:border-brand-text-muted transition-all"
             >
               <Layers className="w-3 h-3" />
               CONNECT DRIVE
@@ -298,7 +299,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
 
           <button
             onClick={() => setIsAdding(true)}
-            className="bg-brand-accent text-black px-6 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
+            className="hidden md:flex bg-brand-accent text-black px-6 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
           >
             <Plus className="w-4 h-4" />
             ADD RECEIPT
@@ -326,7 +327,12 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
         </div>
       </header>
 
-      {currentPage === 'shipments' ? <ShipmentsPage /> : <main className="max-w-4xl mx-auto px-6 py-10 space-y-10">
+      {currentPage === 'shipments' ? (
+        <ShipmentsPage
+          forceOpenModal={openShipmentModal}
+          onForceOpenModalHandled={() => setOpenShipmentModal(false)}
+        />
+      ) : <main className="max-w-4xl mx-auto px-6 pt-10 pb-28 md:pb-10 space-y-10">
         {/* Bento Grid Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Total Spent Card */}
@@ -741,6 +747,42 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Mobile bottom navigation — hidden on md+ */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 glass border-t border-brand-border">
+        <div className="flex items-center justify-around px-8 pb-5 pt-2">
+          <button
+            onClick={() => setCurrentPage('receipts')}
+            className={`flex flex-col items-center gap-1.5 px-6 py-2 rounded-xl transition-all ${
+              currentPage === 'receipts' ? 'text-brand-accent' : 'text-brand-text-muted'
+            }`}
+          >
+            <Wallet className="w-5 h-5" />
+            <span className="text-[8px] font-mono uppercase tracking-widest">Receipts</span>
+          </button>
+
+          {/* Floating action button */}
+          <button
+            onClick={() => {
+              if (currentPage === 'receipts') setIsAdding(true);
+              else setOpenShipmentModal(true);
+            }}
+            className="w-14 h-14 bg-brand-accent text-black rounded-2xl flex items-center justify-center -mt-7 shadow-[0_0_30px_rgba(0,255,102,0.35)] active:scale-95 transition-all"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('shipments')}
+            className={`flex flex-col items-center gap-1.5 px-6 py-2 rounded-xl transition-all ${
+              currentPage === 'shipments' ? 'text-brand-accent' : 'text-brand-text-muted'
+            }`}
+          >
+            <Package className="w-5 h-5" />
+            <span className="text-[8px] font-mono uppercase tracking-widest">Shipments</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }
