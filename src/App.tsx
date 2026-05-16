@@ -4,13 +4,17 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet } from 'lucide-react';
+import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import type { Session } from '@supabase/supabase-js';
 import { Receipt, CATEGORIES } from './types';
 import { supabase } from './supabase';
+import Login from './Login';
 
 export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [search, setSearch] = useState('');
@@ -22,6 +26,24 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [visibleCount, setVisibleCount] = useState(8);
 const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
   // Fetch from backend API
   
   const fetchReceipts = async (retries = 3) => {
@@ -200,6 +222,22 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
     return Object.entries(totals).sort((a, b) => b[1] - a[1]);
   }, [filteredReceipts]);
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Login />;
+  }
+
+  const user = session.user;
+  const avatarUrl = user.user_metadata?.avatar_url as string | undefined;
+  const fullName = (user.user_metadata?.full_name ?? user.email ?? 'User') as string;
+
   return (
     <div className="min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
       {/* Header */}
@@ -239,13 +277,33 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
             </a>
           )}
 
-          <button 
+          <button
             onClick={() => setIsAdding(true)}
             className="bg-brand-accent text-black px-6 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
           >
             <Plus className="w-4 h-4" />
             ADD RECEIPT
           </button>
+
+          <div className="flex items-center gap-3 pl-4 border-l border-brand-border">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={fullName} referrerPolicy="no-referrer" className="w-8 h-8 rounded-full border border-brand-border object-cover" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-brand-card border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent uppercase">
+                {fullName.charAt(0)}
+              </div>
+            )}
+            <span className="hidden md:block text-[10px] font-mono text-brand-text-muted uppercase tracking-widest max-w-[120px] truncate">
+              {fullName}
+            </span>
+            <button
+              onClick={handleSignOut}
+              title="Sign out"
+              className="p-2 rounded-lg text-brand-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
