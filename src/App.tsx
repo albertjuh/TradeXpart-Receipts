@@ -11,6 +11,7 @@ import type { Session } from '@supabase/supabase-js';
 import { Receipt, CATEGORIES } from './types';
 import { supabase } from './supabase';
 import Login from './Login';
+import ShipmentsPage from './ShipmentsPage';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -26,6 +27,7 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [visibleCount, setVisibleCount] = useState(8);
 const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+  const [currentPage, setCurrentPage] = useState<'receipts' | 'shipments'>('receipts');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -251,7 +253,24 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
             <span className="text-[10px] font-mono text-brand-accent tracking-widest uppercase">v1.0.0 // AI-POWERED</span>
           </div>
         </div>
-        
+
+        {/* Page nav */}
+        <nav className="hidden md:flex items-center gap-1 p-1 bg-brand-bg rounded-xl border border-brand-border">
+          {(['receipts', 'shipments'] as const).map(page => (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`px-4 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-widest transition-all ${
+                currentPage === page
+                  ? 'bg-brand-accent text-black font-bold'
+                  : 'text-brand-text-muted hover:text-white'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+        </nav>
+
         <div className="flex items-center gap-4">
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
             <div className="w-1.5 h-1.5 bg-brand-accent rounded-full animate-pulse" />
@@ -307,7 +326,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-10 space-y-10">
+      {currentPage === 'shipments' ? <ShipmentsPage /> : <main className="max-w-4xl mx-auto px-6 py-10 space-y-10">
         {/* Bento Grid Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Total Spent Card */}
@@ -554,7 +573,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
             </AnimatePresence>
           </div>
         </div>
-      </main>
+      </main>}
 
       {/* Add Receipt Modal */}
       <AnimatePresence>

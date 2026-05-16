@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Recurse -Path \"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\\\\src\" -Force | Select-Object FullName | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\"\\), \".\" } | Sort-Object)",
+      "PowerShell(Get-ChildItem -Recurse -Path \"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\\\\src\" -Force | Where-Object { -not $_.PSIsContainer } | Select-Object @{Name=\"Path\";Expression={$_.FullName -replace [regex]::Escape\\(\"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\\\\\"\\), \"\"}} | Format-Table -HideTableHeaders)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
