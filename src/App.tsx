@@ -12,6 +12,7 @@ import { Receipt, CATEGORIES } from './types';
 import { supabase } from './supabase';
 import Login from './Login';
 import ShipmentsPage from './ShipmentsPage';
+import ShipmentDetailPage from './ShipmentDetailPage';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -29,6 +30,7 @@ export default function App() {
 const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [currentPage, setCurrentPage] = useState<'receipts' | 'shipments'>('receipts');
   const [openShipmentModal, setOpenShipmentModal] = useState(false);
+  const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -328,10 +330,18 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
       </header>
 
       {currentPage === 'shipments' ? (
-        <ShipmentsPage
-          forceOpenModal={openShipmentModal}
-          onForceOpenModalHandled={() => setOpenShipmentModal(false)}
-        />
+        selectedShipmentId ? (
+          <ShipmentDetailPage
+            shipmentId={selectedShipmentId}
+            onBack={() => setSelectedShipmentId(null)}
+          />
+        ) : (
+          <ShipmentsPage
+            forceOpenModal={openShipmentModal}
+            onForceOpenModalHandled={() => setOpenShipmentModal(false)}
+            onSelectShipment={setSelectedShipmentId}
+          />
+        )
       ) : <main className="w-full max-w-4xl mx-auto px-6 pt-10 pb-28 md:pb-10 space-y-10 overflow-x-hidden box-border">
         {/* Bento Grid Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -773,7 +783,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
           </button>
 
           <button
-            onClick={() => setCurrentPage('shipments')}
+            onClick={() => { setCurrentPage('shipments'); setSelectedShipmentId(null); }}
             className={`flex flex-col items-center gap-1.5 px-6 py-2 rounded-xl transition-all ${
               currentPage === 'shipments' ? 'text-brand-accent' : 'text-brand-text-muted'
             }`}

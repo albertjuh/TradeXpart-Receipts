@@ -51,9 +51,10 @@ type Filter = 'all' | 'import' | 'export';
 type Props = {
   forceOpenModal?: boolean;
   onForceOpenModalHandled?: () => void;
+  onSelectShipment?: (id: string) => void;
 };
 
-export default function ShipmentsPage({ forceOpenModal = false, onForceOpenModalHandled }: Props) {
+export default function ShipmentsPage({ forceOpenModal = false, onForceOpenModalHandled, onSelectShipment }: Props) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
@@ -157,9 +158,10 @@ export default function ShipmentsPage({ forceOpenModal = false, onForceOpenModal
               {filtered.map((s, i) => (
                 <tr
                   key={s.id}
-                  className={`border-b border-brand-border last:border-0 hover:bg-white/[0.02] transition-colors ${
-                    i % 2 !== 0 ? 'bg-white/[0.01]' : ''
-                  }`}
+                  onClick={() => onSelectShipment?.(s.id)}
+                  className={`border-b border-brand-border last:border-0 hover:bg-white/[0.03] transition-colors ${
+                    onSelectShipment ? 'cursor-pointer' : ''
+                  } ${i % 2 !== 0 ? 'bg-white/[0.01]' : ''}`}
                 >
                   {/* Type badge */}
                   <td className="px-5 py-4">
