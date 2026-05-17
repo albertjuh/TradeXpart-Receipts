@@ -13,6 +13,14 @@
 }
 
 @layer base {
+  html, body, #root {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+  }
+
   body {
     @apply bg-brand-bg text-white antialiased selection:bg-brand-accent selection:text-black;
   }

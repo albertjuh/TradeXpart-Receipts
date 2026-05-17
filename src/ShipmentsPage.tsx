@@ -82,7 +82,7 @@ export default function ShipmentsPage({ forceOpenModal = false, onForceOpenModal
   const filtered = filter === 'all' ? shipments : shipments.filter(s => s.type === filter);
 
   return (
-    <main className="max-w-6xl mx-auto px-6 pt-10 pb-28 md:pb-10">
+    <main className="w-full max-w-6xl mx-auto px-6 pt-10 pb-28 md:pb-10 overflow-x-hidden box-border">
       {/* Page header */}
       <div className="flex items-center justify-between mb-8">
         <div>

@@ -242,9 +242,9 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
   const fullName = (user.user_metadata?.full_name ?? user.email ?? 'User') as string;
 
   return (
-    <div className="min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
+    <div className="relative w-full max-w-[100vw] overflow-x-hidden min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
       {/* Header */}
-      <header className="sticky top-0 z-40 glass border-b border-brand-border px-6 h-20 flex items-center justify-between">
+      <header className="sticky top-0 z-40 glass border-b border-brand-border px-6 h-20 flex items-center justify-between w-full max-w-[100vw] overflow-hidden">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-brand-accent rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(0,255,102,0.3)]">
             <Layers className="text-black w-6 h-6" />
@@ -332,7 +332,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
           forceOpenModal={openShipmentModal}
           onForceOpenModalHandled={() => setOpenShipmentModal(false)}
         />
-      ) : <main className="max-w-4xl mx-auto px-6 pt-10 pb-28 md:pb-10 space-y-10">
+      ) : <main className="w-full max-w-4xl mx-auto px-6 pt-10 pb-28 md:pb-10 space-y-10 overflow-x-hidden box-border">
         {/* Bento Grid Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Total Spent Card */}
