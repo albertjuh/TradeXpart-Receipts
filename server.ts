@@ -275,7 +275,7 @@ async function startServer() {
       });
       const sheets = google.sheets({ version: "v4", auth });
       const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: "1wp0RE5jjO_t32F0rHYBpOgGZajD-i3wy4uzcXxekndk",
+        spreadsheetId: "1ssFiH2vtsKfNqDL7QORsoM3GN9OdLZokolYoMLbJ5rc",
         range: "Sheet1!A:F",
       });
       const rows = response.data.values || [];
