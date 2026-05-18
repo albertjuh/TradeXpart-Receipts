@@ -299,6 +299,69 @@ async function startServer() {
       res.status(500).json({ error: "Failed to fetch sheets data" });
     }
   });
+  app.put("/api/receipts/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+    try {
+      const auth = new google.auth.GoogleAuth({
+        credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS || "{}"),
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
+      const sheets = google.sheets({ version: "v4", auth });
+      const spreadsheetId = "1ssFiH2vtsKfNqDL7QORsoM3GN9OdLZokolYoMLbJ5rc";
+
+      const getResp = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: "Sheet1!A:L",
+      });
+      const rows = getResp.data.values || [];
+      const rowIndex = rows.findIndex((row, i) => i > 0 && row[0] === id);
+      if (rowIndex === -1) return res.status(404).json({ error: "Receipt not found" });
+
+      const existing = rows[rowIndex];
+      const updatedRow = [
+        existing[0],
+        existing[1],
+        existing[2],
+        updates.vendor       ?? existing[3],
+        updates.amount !== undefined ? String(updates.amount) : existing[4],
+        updates.currency     ?? existing[5],
+        updates.category     ?? existing[6],
+        updates.account_type ?? existing[7],
+        updates.payment_method !== undefined ? updates.payment_method : existing[8],
+        existing[9],
+        existing[10],
+        updates.notes !== undefined ? updates.notes : existing[11],
+      ];
+
+      const sheetRow = rowIndex + 1;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Sheet1!A${sheetRow}:L${sheetRow}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [updatedRow] },
+      });
+
+      res.json({
+        id: updatedRow[0],
+        date: updatedRow[1],
+        time: updatedRow[2],
+        vendor: updatedRow[3],
+        amount: parseFloat(updatedRow[4]) || 0,
+        currency: updatedRow[5] || "TSh",
+        category: updatedRow[6] || "Other",
+        account_type: updatedRow[7] || "Unknown",
+        payment_method: updatedRow[8] || "",
+        submitted_by: updatedRow[9] || "",
+        status: updatedRow[10] || "logged",
+        notes: updatedRow[11] || "",
+      });
+    } catch (error) {
+      console.error("Update error:", error);
+      res.status(500).json({ error: "Failed to update receipt" });
+    }
+  });
+
   app.delete("/api/receipts/:id", (req, res) => {
     const { id } = req.params;
     receipts = receipts.filter(r => r.id !== id);

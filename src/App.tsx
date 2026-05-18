@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet, LogOut, Package } from 'lucide-react';
+import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet, LogOut, Package, Pencil, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import type { Session } from '@supabase/supabase-js';
@@ -31,6 +31,9 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
   const [currentPage, setCurrentPage] = useState<'receipts' | 'shipments'>('receipts');
   const [openShipmentModal, setOpenShipmentModal] = useState(false);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<Receipt>>({});
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -175,6 +178,37 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
     }
   };
 
+  const isIncomplete = (r: Receipt) =>
+    !r.vendor || r.vendor === 'Unknown' ||
+    r.amount === 0 ||
+    r.account_type === 'Unknown' ||
+    (r.category === 'Other' && !r.notes);
+
+  const handleSaveEdit = async () => {
+    if (!selectedReceipt) return;
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/receipts/${selectedReceipt.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+      if (response.ok) {
+        const updated = await response.json();
+        setReceipts(prev => prev.map(r => r.id === selectedReceipt.id ? { ...r, ...updated } : r));
+        setSelectedReceipt(prev => prev ? { ...prev, ...updated } : null);
+        setIsEditing(false);
+      } else {
+        alert('Failed to save changes');
+      }
+    } catch (e) {
+      console.error('Save error', e);
+      alert('Failed to save changes');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const deleteReceipt = async (id: string) => {
     if (confirm("Are you sure you want to delete this receipt?")) {
       try {
@@ -192,7 +226,11 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
   const filteredReceipts = useMemo(() => {
     return receipts.filter(r => {
       const matchesSearch = r.vendor.toLowerCase().includes(search.toLowerCase());
-      const matchesCategory = filterCategory === 'All' || r.category === filterCategory;
+      const matchesCategory = filterCategory === 'All'
+        ? true
+        : filterCategory === 'Incomplete'
+        ? isIncomplete(r)
+        : r.category === filterCategory;
       
       let matchesDate = true;
       if (dateRange !== 'All') {
@@ -455,62 +493,73 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                 <button
                   key={cat}
                   onClick={() => setFilterCategory(cat)}
-                  className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border ${
-                    filterCategory === cat 
-                    ? 'bg-brand-accent text-black border-brand-accent font-bold' 
+                  className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
+                    filterCategory === cat
+                    ? 'bg-brand-accent text-black border-brand-accent font-bold'
                     : 'bg-brand-card text-brand-text-muted border-brand-border hover:border-brand-text-muted'
                   }`}
                 >
                   {cat}
                 </button>
               ))}
+              <button
+                onClick={() => setFilterCategory('Incomplete')}
+                className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
+                  filterCategory === 'Incomplete'
+                    ? 'bg-orange-500 text-black border-orange-500 font-bold'
+                    : 'bg-brand-card text-orange-400 border-orange-500/30 hover:border-orange-400'
+                }`}
+              >
+                Incomplete
+              </button>
             </div>
           </div>
 
           <div className="space-y-4">
+            {/* Reports Panel — full width */}
+            <div className="glass rounded-2xl p-4 border border-brand-border">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Spending Report</h2>
+                <div className="flex gap-1">
+                  {(['daily', 'weekly', 'monthly'] as const).map(p => (
+                    <button
+                      key={p}
+                      onClick={() => setReportPeriod(p)}
+                      className={`px-2.5 py-1 rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all ${reportPeriod === p ? 'bg-brand-accent text-black font-bold' : 'text-brand-text-muted border border-brand-border hover:border-brand-accent/50'}`}
+                    >{p}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-end justify-between mb-3">
+                <div>
+                  <div className="text-[10px] font-mono text-brand-text-muted uppercase">Total Spent</div>
+                  <div className="text-2xl font-bold font-mono tracking-tighter"><span className="text-brand-accent text-xs mr-1">TSh</span>{reportData.total.toLocaleString()}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] font-mono text-brand-text-muted uppercase">Transactions</div>
+                  <div className="text-2xl font-bold font-mono">{reportData.count}</div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {reportData.byCategory.slice(0, 5).map(([cat, amt]) => (
+                  <div key={cat} className="flex items-center gap-2">
+                    <div className="text-[9px] font-mono text-brand-text-muted uppercase w-20 truncate">{cat}</div>
+                    <div className="flex-1 h-1.5 bg-brand-border rounded-full overflow-hidden">
+                      <div className="h-full bg-brand-accent rounded-full" style={{width: `${(amt/reportData.total)*100}%`}} />
+                    </div>
+                    <div className="text-[9px] font-mono text-white w-16 text-right">TSh {amt.toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Transaction Log header */}
             <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-brand-accent rounded-full" />
-                {/* Reports Panel */}
-                <div className="glass rounded-2xl p-4 mb-4 border border-brand-border">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Spending Report</h2>
-                    <div className="flex gap-1">
-                      {(['daily', 'weekly', 'monthly'] as const).map(p => (
-                        <button
-                          key={p}
-                          onClick={() => setReportPeriod(p)}
-                          className={`px-2.5 py-1 rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all ${reportPeriod === p ? 'bg-brand-accent text-black font-bold' : 'text-brand-text-muted border border-brand-border hover:border-brand-accent/50'}`}
-                        >{p}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-end justify-between mb-3">
-                    <div>
-                      <div className="text-[10px] font-mono text-brand-text-muted uppercase">Total Spent</div>
-                      <div className="text-2xl font-bold font-mono tracking-tighter"><span className="text-brand-accent text-xs mr-1">TSh</span>{reportData.total.toLocaleString()}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-[10px] font-mono text-brand-text-muted uppercase">Transactions</div>
-                      <div className="text-2xl font-bold font-mono">{reportData.count}</div>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {reportData.byCategory.slice(0, 5).map(([cat, amt]) => (
-                      <div key={cat} className="flex items-center gap-2">
-                        <div className="text-[9px] font-mono text-brand-text-muted uppercase w-20 truncate">{cat}</div>
-                        <div className="flex-1 h-1.5 bg-brand-border rounded-full overflow-hidden">
-                          <div className="h-full bg-brand-accent rounded-full" style={{width: `${(amt/reportData.total)*100}%`}} />
-                        </div>
-                        <div className="text-[9px] font-mono text-white w-16 text-right">TSh {amt.toLocaleString()}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Transaction Log</h2>
               </div>
-              <select 
+              <select
                 value={dateRange}
                 onChange={(e) => setDateRange(e.target.value as any)}
                 className="text-[10px] font-mono bg-transparent border-none focus:ring-0 text-brand-text-muted uppercase tracking-widest cursor-pointer hover:text-brand-accent transition-colors"
@@ -553,6 +602,11 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                       </div>
 
                       <div className="flex items-center gap-3">
+                        {isIncomplete(receipt) && (
+                          <span className="px-2 py-0.5 rounded-lg text-[8px] font-mono font-bold uppercase border bg-orange-500/10 text-orange-400 border-orange-500/30 hidden sm:block flex-shrink-0">
+                            !
+                          </span>
+                        )}
                         <span className={`px-2 py-0.5 rounded-lg text-[8px] font-mono font-bold uppercase border hidden sm:block ${
                           receipt.account_type === 'Business'
                             ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
@@ -687,7 +741,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSelectedReceipt(null)}
+              onClick={() => { setSelectedReceipt(null); setIsEditing(false); }}
               className="absolute inset-0 bg-black/90 backdrop-blur-xl"
             />
             <motion.div
@@ -697,91 +751,216 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
               className="relative glass w-full max-w-lg rounded-[3rem] overflow-y-auto max-h-[90vh] shadow-[0_0_100px_rgba(0,0,0,0.5)]"
             >
               <div className="p-8 md:p-10">
-                {/* Header: badges + close */}
+                {/* Header: badges + actions */}
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex flex-wrap gap-2">
-                    <span className="px-3 py-1 bg-brand-accent/10 rounded-lg border border-brand-accent/20 text-[10px] font-mono text-brand-accent uppercase tracking-widest">
-                      {selectedReceipt.category}
-                    </span>
-                    <span className={`px-3 py-1 rounded-lg border text-[10px] font-mono font-bold uppercase ${
-                      selectedReceipt.account_type === 'Business'
-                        ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
-                        : selectedReceipt.account_type === 'Personal'
-                        ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                        : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
-                    }`}>
-                      {selectedReceipt.account_type}
-                    </span>
-                    {selectedReceipt.status === 'pending' && (
-                      <span className="px-3 py-1 bg-amber-500/10 rounded-lg border border-amber-500/30 text-[10px] font-mono text-amber-400 uppercase tracking-widest">
-                        Pending
+                    {isEditing ? (
+                      <span className="px-3 py-1 bg-orange-500/10 rounded-lg border border-orange-500/30 text-[10px] font-mono text-orange-400 uppercase tracking-widest">
+                        Editing
                       </span>
+                    ) : (
+                      <>
+                        <span className="px-3 py-1 bg-brand-accent/10 rounded-lg border border-brand-accent/20 text-[10px] font-mono text-brand-accent uppercase tracking-widest">
+                          {selectedReceipt.category}
+                        </span>
+                        <span className={`px-3 py-1 rounded-lg border text-[10px] font-mono font-bold uppercase ${
+                          selectedReceipt.account_type === 'Business'
+                            ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
+                            : selectedReceipt.account_type === 'Personal'
+                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                            : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
+                        }`}>
+                          {selectedReceipt.account_type}
+                        </span>
+                        {selectedReceipt.status === 'pending' && (
+                          <span className="px-3 py-1 bg-amber-500/10 rounded-lg border border-amber-500/30 text-[10px] font-mono text-amber-400 uppercase tracking-widest">
+                            Pending
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
-                  <button
-                    onClick={() => setSelectedReceipt(null)}
-                    className="p-2.5 bg-brand-card rounded-2xl hover:bg-brand-border transition-all border border-brand-border ml-3 flex-shrink-0"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                {/* Vendor + datetime */}
-                <h2 className="text-3xl font-bold uppercase tracking-tighter leading-none mb-1">
-                  {selectedReceipt.vendor}
-                </h2>
-                <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-8">
-                  {selectedReceipt.date}{selectedReceipt.time ? ` · ${selectedReceipt.time}` : ''}
-                </div>
-
-                {/* Amount */}
-                <div className="flex items-baseline gap-2 mb-8">
-                  <span className="text-xl font-mono text-brand-accent">{selectedReceipt.currency || 'TSh'}</span>
-                  <span className="text-5xl font-bold tracking-tighter tabular-nums">
-                    {selectedReceipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                  </span>
-                </div>
-
-                {/* Metadata grid */}
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
-                    <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Receipt ID</div>
-                    <div className="text-xs font-mono text-white truncate">{selectedReceipt.id}</div>
+                  <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                    {!isEditing && (
+                      <button
+                        onClick={() => {
+                          setEditForm({
+                            vendor: selectedReceipt.vendor,
+                            amount: selectedReceipt.amount,
+                            currency: selectedReceipt.currency,
+                            category: selectedReceipt.category,
+                            account_type: selectedReceipt.account_type,
+                            payment_method: selectedReceipt.payment_method ?? '',
+                            notes: selectedReceipt.notes ?? '',
+                          });
+                          setIsEditing(true);
+                        }}
+                        className="p-2.5 bg-brand-card rounded-2xl hover:bg-brand-accent/10 hover:text-brand-accent transition-all border border-brand-border text-brand-text-muted"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setSelectedReceipt(null); setIsEditing(false); }}
+                      className="p-2.5 bg-brand-card rounded-2xl hover:bg-brand-border transition-all border border-brand-border"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
                   </div>
-                  <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
-                    <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Status</div>
-                    <div className={`text-xs font-mono font-bold uppercase ${selectedReceipt.status === 'pending' ? 'text-amber-400' : 'text-brand-accent'}`}>
-                      {selectedReceipt.status}
+                </div>
+
+                {isEditing ? (
+                  /* Edit form */
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Vendor</label>
+                        <input
+                          type="text"
+                          value={editForm.vendor ?? ''}
+                          onChange={e => setEditForm(f => ({ ...f, vendor: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Amount</label>
+                        <input
+                          type="number"
+                          value={editForm.amount ?? 0}
+                          onChange={e => setEditForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Currency</label>
+                        <input
+                          type="text"
+                          value={editForm.currency ?? 'TSh'}
+                          onChange={e => setEditForm(f => ({ ...f, currency: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Category</label>
+                        <select
+                          value={editForm.category ?? 'Other'}
+                          onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                        >
+                          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Account Type</label>
+                        <select
+                          value={editForm.account_type ?? 'Unknown'}
+                          onChange={e => setEditForm(f => ({ ...f, account_type: e.target.value as Receipt['account_type'] }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                        >
+                          <option value="Business">Business</option>
+                          <option value="Personal">Personal</option>
+                          <option value="Unknown">Unknown</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Payment Method</label>
+                        <select
+                          value={editForm.payment_method ?? ''}
+                          onChange={e => setEditForm(f => ({ ...f, payment_method: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                        >
+                          <option value="">— None —</option>
+                          <option value="Cash">Cash</option>
+                          <option value="M-Pesa">M-Pesa</option>
+                          <option value="Bank Transfer">Bank Transfer</option>
+                          <option value="Card">Card</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Notes</label>
+                        <textarea
+                          value={editForm.notes ?? ''}
+                          onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                          rows={3}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all resize-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={() => setIsEditing(false)}
+                        className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleSaveEdit}
+                        disabled={isSaving}
+                        className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                      >
+                        {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                        Save Changes
+                      </button>
                     </div>
                   </div>
-                  {selectedReceipt.payment_method && (
-                    <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
-                      <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Payment Method</div>
-                      <div className="text-xs font-mono text-white">{selectedReceipt.payment_method}</div>
+                ) : (
+                  /* Read view */
+                  <>
+                    <h2 className="text-3xl font-bold uppercase tracking-tighter leading-none mb-1">
+                      {selectedReceipt.vendor}
+                    </h2>
+                    <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-8">
+                      {selectedReceipt.date}{selectedReceipt.time ? ` · ${selectedReceipt.time}` : ''}
                     </div>
-                  )}
-                  {selectedReceipt.submitted_by && (
-                    <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
-                      <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Submitted By</div>
-                      <div className="text-xs font-mono text-white">{selectedReceipt.submitted_by}</div>
-                    </div>
-                  )}
-                </div>
 
-                {selectedReceipt.notes && (
-                  <div className="mb-8">
-                    <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-2">Notes</div>
-                    <p className="text-sm text-brand-text-muted leading-relaxed italic">"{selectedReceipt.notes}"</p>
-                  </div>
+                    <div className="flex items-baseline gap-2 mb-8">
+                      <span className="text-xl font-mono text-brand-accent">{selectedReceipt.currency || 'TSh'}</span>
+                      <span className="text-5xl font-bold tracking-tighter tabular-nums">
+                        {selectedReceipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                      <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                        <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Receipt ID</div>
+                        <div className="text-xs font-mono text-white truncate">{selectedReceipt.id}</div>
+                      </div>
+                      <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                        <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Status</div>
+                        <div className={`text-xs font-mono font-bold uppercase ${selectedReceipt.status === 'pending' ? 'text-amber-400' : 'text-brand-accent'}`}>
+                          {selectedReceipt.status}
+                        </div>
+                      </div>
+                      {selectedReceipt.payment_method && (
+                        <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                          <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Payment Method</div>
+                          <div className="text-xs font-mono text-white">{selectedReceipt.payment_method}</div>
+                        </div>
+                      )}
+                      {selectedReceipt.submitted_by && (
+                        <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                          <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Submitted By</div>
+                          <div className="text-xs font-mono text-white">{selectedReceipt.submitted_by}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedReceipt.notes && (
+                      <div className="mb-8">
+                        <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-2">Notes</div>
+                        <p className="text-sm text-brand-text-muted leading-relaxed italic">"{selectedReceipt.notes}"</p>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => deleteReceipt(selectedReceipt.id)}
+                      className="w-full py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 font-mono text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Purge Transaction
+                    </button>
+                  </>
                 )}
-
-                <button
-                  onClick={() => deleteReceipt(selectedReceipt.id)}
-                  className="w-full py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 font-mono text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  Purge Transaction
-                </button>
               </div>
             </motion.div>
           </div>
