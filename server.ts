@@ -279,16 +279,19 @@ async function startServer() {
         range: "Sheet1!A:F",
       });
       const rows = response.data.values || [];
-      const data = rows.slice(1).filter((row: string[]) => row[0] && row[0].match(/^\d{4}-\d{2}-\d{2}/)).map((row: string[], index: number) => ({
-        id: String(index + 1),
-        storeName: row[1] || 'Unknown',
-        amount: parseFloat(row[2]) || 0,
-        date: row[0] || new Date().toISOString(),
-        category: row[3] || 'Other',
-        notes: row[5] || '',
-        imageUrl: '',
-        createdAt: new Date().toISOString(),
-        source: 'WhatsApp'
+      const data = rows.slice(1).filter((row: string[]) => row[0] && row[1]).map((row: string[]) => ({
+        id: row[0] || '',
+        date: row[1] || '',
+        time: row[2] || '',
+        vendor: row[3] || 'Unknown',
+        amount: parseFloat(row[4]) || 0,
+        currency: row[5] || 'TSh',
+        category: row[6] || 'Other',
+        account_type: row[7] || 'Unknown',
+        payment_method: row[8] || '',
+        submitted_by: row[9] || '',
+        status: row[10] || 'logged',
+        notes: row[11] || ''
       }));
       res.json(data);
     } catch (error) {
