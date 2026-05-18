@@ -276,19 +276,24 @@ async function startServer() {
       const sheets = google.sheets({ version: "v4", auth });
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId: "1ssFiH2vtsKfNqDL7QORsoM3GN9OdLZokolYoMLbJ5rc",
-        range: "Sheet1!A:F",
+        range: "Sheet1!A:L",
       });
       const rows = response.data.values || [];
-      const data = rows.slice(1).filter((row: string[]) => row[0] && row[0].match(/^\d{4}-\d{2}-\d{2}/)).map((row: string[], index: number) => ({
-        id: String(index + 1),
-        storeName: row[1] || 'Unknown',
-        amount: parseFloat(row[2]) || 0,
-        date: row[0] || new Date().toISOString(),
-        category: row[3] || 'Other',
-        notes: row[5] || '',
-        imageUrl: '',
-        createdAt: new Date().toISOString(),
-        source: 'WhatsApp'
+      const data = rows.slice(1).filter((row: string[]) =>
+        row[1] && row[1].match(/^\d{4}-\d{2}-\d{2}/)
+      ).map((row: string[], index: number) => ({
+        id: row[0] || String(index + 1),
+        date: row[1] || new Date().toISOString().split('T')[0],
+        time: row[2] || '',
+        vendor: row[3] || 'Unknown',
+        amount: parseFloat(row[4]) || 0,
+        currency: row[5] || 'TSh',
+        category: row[6] || 'Other',
+        account_type: row[7] || 'Unknown',
+        payment_method: row[8] || '',
+        submitted_by: row[9] || '',
+        status: row[10] || 'logged',
+        notes: row[11] || ''
       }));
       res.json(data);
     } catch (error) {
