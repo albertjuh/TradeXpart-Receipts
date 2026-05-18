@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet, LogOut, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import type { Session } from '@supabase/supabase-js';
 import { Receipt, CATEGORIES } from './types';
 import { supabase } from './supabase';
@@ -57,8 +57,23 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
       const contentType = response.headers.get("content-type");
 
       if (response.ok && contentType && contentType.includes("application/json")) {
-        const data = await response.json();
-        setReceipts(data);
+        const raw = await response.json();
+        // Map Google Sheets columns: Receipt ID | Date | Time | Vendor | Amount | Currency | Category | Account Type | Payment Method | Submitted By | Status | Notes
+        const mapped: Receipt[] = (Array.isArray(raw) ? raw : []).map((row: Record<string, string>) => ({
+          id: row['Receipt ID'] || row['id'] || '',
+          date: row['Date'] || row['date'] || '',
+          time: row['Time'] || row['time'] || '',
+          vendor: row['Vendor'] || row['vendor'] || '',
+          amount: parseFloat(row['Amount'] || row['amount'] || '0') || 0,
+          currency: row['Currency'] || row['currency'] || 'TSh',
+          category: row['Category'] || row['category'] || 'Other',
+          account_type: (row['Account Type'] || row['account_type'] || 'Unknown') as Receipt['account_type'],
+          payment_method: row['Payment Method'] || row['payment_method'] || undefined,
+          submitted_by: row['Submitted By'] || row['submitted_by'] || undefined,
+          status: (row['Status'] || row['status'] || 'logged') as Receipt['status'],
+          notes: row['Notes'] || row['notes'] || undefined,
+        }));
+        setReceipts(mapped);
       } else if (response.status === 200 && contentType && contentType.includes("text/html")) {
         // Server is still warming up (AI Studio placeholder page)
         if (retries > 0) {
@@ -176,7 +191,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
 
   const filteredReceipts = useMemo(() => {
     return receipts.filter(r => {
-      const matchesSearch = r.storeName.toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = r.vendor.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = filterCategory === 'All' || r.category === filterCategory;
       
       let matchesDate = true;
@@ -521,37 +536,35 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                       className="glass p-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:border-brand-accent/30 transition-all group relative overflow-hidden"
                     >
                       <div className="absolute top-0 left-0 w-1 h-full bg-brand-accent opacity-0 group-hover:opacity-100 transition-all" />
-                      
+
                       <div className="flex items-center gap-5">
-                        <div className="w-8 h-8 bg-brand-bg rounded-lg overflow-hidden flex items-center justify-center border border-brand-border group-hover:border-brand-accent/20 transition-all flex-shrink-0">
-                          {receipt.imageUrl ? (
-                            <img src={receipt.imageUrl} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all" referrerPolicy="no-referrer" />
-                          ) : (
-                            <Camera className="w-3.5 h-3.5 text-brand-text-muted" />
-                          )}
+                        <div className="w-8 h-8 bg-brand-bg rounded-lg flex items-center justify-center border border-brand-border group-hover:border-brand-accent/20 transition-all flex-shrink-0 text-xs font-bold text-brand-accent uppercase">
+                          {receipt.vendor.charAt(0)}
                         </div>
                         <div>
-                          <div className="font-bold text-xs tracking-tight group-hover:text-brand-accent transition-colors uppercase">{receipt.storeName}</div>
+                          <div className="font-bold text-xs tracking-tight group-hover:text-brand-accent transition-colors uppercase">{receipt.vendor}</div>
                           <div className="text-[10px] font-mono text-brand-text-muted flex items-center gap-2 mt-1">
-                            <span>{format(parseISO(receipt.date), 'dd.MM.yyyy')}</span>
+                            <span>{receipt.date}</span>
+                            {receipt.time && <><span className="text-brand-border">/</span><span>{receipt.time}</span></>}
                             <span className="text-brand-border">/</span>
                             <span className="uppercase">{receipt.category}</span>
-                            {receipt.source && (
-                              <>
-                                <span className="text-brand-border">/</span>
-                                <span className="px-1.5 py-0.5 rounded-full bg-brand-accent/10 text-brand-accent text-[8px] font-bold border border-brand-accent/20">
-                                  {receipt.source}
-                                </span>
-                              </>
-                            )}
                           </div>
                         </div>
                       </div>
-                      
-                      <div className="flex items-center gap-6">
+
+                      <div className="flex items-center gap-3">
+                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-mono font-bold uppercase border hidden sm:block ${
+                          receipt.account_type === 'Business'
+                            ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
+                            : receipt.account_type === 'Personal'
+                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                            : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
+                        }`}>
+                          {receipt.account_type}
+                        </span>
                         <div className="text-right">
                           <div className="text-sm font-bold font-mono tracking-tighter">
-                            <span className="text-brand-accent text-xs mr-1">TSh</span>
+                            <span className="text-brand-accent text-xs mr-1">{receipt.currency || 'TSh'}</span>
                             {receipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                           </div>
                         </div>
@@ -670,88 +683,105 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
       <AnimatePresence>
         {selectedReceipt && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSelectedReceipt(null)}
               className="absolute inset-0 bg-black/90 backdrop-blur-xl"
             />
-            <motion.div 
-              initial={{ opacity: 0, y: 100 }}
+            <motion.div
+              initial={{ opacity: 0, y: 60 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 100 }}
-              className="relative glass w-full max-w-2xl rounded-[3rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)]"
+              exit={{ opacity: 0, y: 60 }}
+              className="relative glass w-full max-w-lg rounded-[3rem] overflow-y-auto max-h-[90vh] shadow-[0_0_100px_rgba(0,0,0,0.5)]"
             >
-              <div className="grid grid-cols-1 md:grid-cols-2">
-                <div className="h-80 md:h-auto bg-black relative border-b md:border-b-0 md:border-r border-brand-border">
-                  {selectedReceipt.imageUrl ? (
-                    <img src={selectedReceipt.imageUrl} alt="" className="w-full h-full object-contain opacity-90" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Camera className="w-16 h-16 text-brand-border" />
-                    </div>
-                  )}
-                  <button 
+              <div className="p-8 md:p-10">
+                {/* Header: badges + close */}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="px-3 py-1 bg-brand-accent/10 rounded-lg border border-brand-accent/20 text-[10px] font-mono text-brand-accent uppercase tracking-widest">
+                      {selectedReceipt.category}
+                    </span>
+                    <span className={`px-3 py-1 rounded-lg border text-[10px] font-mono font-bold uppercase ${
+                      selectedReceipt.account_type === 'Business'
+                        ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
+                        : selectedReceipt.account_type === 'Personal'
+                        ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                        : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
+                    }`}>
+                      {selectedReceipt.account_type}
+                    </span>
+                    {selectedReceipt.status === 'pending' && (
+                      <span className="px-3 py-1 bg-amber-500/10 rounded-lg border border-amber-500/30 text-[10px] font-mono text-amber-400 uppercase tracking-widest">
+                        Pending
+                      </span>
+                    )}
+                  </div>
+                  <button
                     onClick={() => setSelectedReceipt(null)}
-                    className="absolute top-6 left-6 p-3 bg-black/50 backdrop-blur-md rounded-2xl hover:bg-black transition-all border border-white/10"
+                    className="p-2.5 bg-brand-card rounded-2xl hover:bg-brand-border transition-all border border-brand-border ml-3 flex-shrink-0"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <div className="p-10 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="px-3 py-1 bg-brand-accent/10 rounded-lg border border-brand-accent/20">
-                        <span className="text-[10px] font-mono text-brand-accent uppercase tracking-widest">{selectedReceipt.category}</span>
-                      </div>
-                      <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">{format(parseISO(selectedReceipt.date), 'dd.MM.yyyy')}</span>
-                    </div>
-                    
-                    <h2 className="text-4xl font-bold uppercase tracking-tighter mb-8 leading-none">{selectedReceipt.storeName}</h2>
-                    
-                    <div className="space-y-6">
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-xl font-mono text-brand-accent">TSh</span>
-                        <span className="text-6xl font-bold tracking-tighter tabular-nums">
-                          {selectedReceipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                      
-                      <div className="p-6 bg-brand-bg rounded-2xl border border-brand-border">
-                        <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-3">System Metadata</div>
-                        <div className="space-y-2 text-xs font-mono">
-                          <div className="flex justify-between">
-                            <span className="text-brand-text-muted">ID:</span>
-                            <span className="text-white truncate ml-4">{selectedReceipt.id.slice(0, 12)}...</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-brand-text-muted">TIMESTAMP:</span>
-                            <span className="text-white">{format(parseISO(selectedReceipt.createdAt), 'HH:mm:ss')}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {selectedReceipt.notes && (
-                        <div>
-                          <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-2">Notes</div>
-                          <p className="text-sm text-brand-text-muted leading-relaxed italic">"{selectedReceipt.notes}"</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-10">
-                    <button 
-                      onClick={() => deleteReceipt(selectedReceipt.id)}
-                      className="w-full py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 font-mono text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Purge Transaction
-                    </button>
-                  </div>
+                {/* Vendor + datetime */}
+                <h2 className="text-3xl font-bold uppercase tracking-tighter leading-none mb-1">
+                  {selectedReceipt.vendor}
+                </h2>
+                <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-8">
+                  {selectedReceipt.date}{selectedReceipt.time ? ` · ${selectedReceipt.time}` : ''}
                 </div>
+
+                {/* Amount */}
+                <div className="flex items-baseline gap-2 mb-8">
+                  <span className="text-xl font-mono text-brand-accent">{selectedReceipt.currency || 'TSh'}</span>
+                  <span className="text-5xl font-bold tracking-tighter tabular-nums">
+                    {selectedReceipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                  </span>
+                </div>
+
+                {/* Metadata grid */}
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                    <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Receipt ID</div>
+                    <div className="text-xs font-mono text-white truncate">{selectedReceipt.id}</div>
+                  </div>
+                  <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                    <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Status</div>
+                    <div className={`text-xs font-mono font-bold uppercase ${selectedReceipt.status === 'pending' ? 'text-amber-400' : 'text-brand-accent'}`}>
+                      {selectedReceipt.status}
+                    </div>
+                  </div>
+                  {selectedReceipt.payment_method && (
+                    <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                      <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Payment Method</div>
+                      <div className="text-xs font-mono text-white">{selectedReceipt.payment_method}</div>
+                    </div>
+                  )}
+                  {selectedReceipt.submitted_by && (
+                    <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
+                      <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Submitted By</div>
+                      <div className="text-xs font-mono text-white">{selectedReceipt.submitted_by}</div>
+                    </div>
+                  )}
+                </div>
+
+                {selectedReceipt.notes && (
+                  <div className="mb-8">
+                    <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-2">Notes</div>
+                    <p className="text-sm text-brand-text-muted leading-relaxed italic">"{selectedReceipt.notes}"</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => deleteReceipt(selectedReceipt.id)}
+                  className="w-full py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 font-mono text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Purge Transaction
+                </button>
               </div>
             </motion.div>
           </div>

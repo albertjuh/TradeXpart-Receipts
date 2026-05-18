@@ -1,21 +1,28 @@
 export interface Receipt {
   id: string;
-  storeName: string;
-  amount: number;
   date: string;
+  time: string;
+  vendor: string;
+  amount: number;
+  currency: string;
   category: string;
-  imageUrl?: string;
+  account_type: 'Business' | 'Personal' | 'Unknown';
+  payment_method?: string;
+  submitted_by?: string;
+  status: 'logged' | 'pending';
   notes?: string;
-  createdAt: string;
-  source?: string;
-  driveFileId?: string;
 }
 
 export const CATEGORIES = [
   "Food",
   "Transport",
-  "Business",
-  "Shopping",
+  "Fuel",
+  "Medical",
+  "Salary",
+  "Maintenance",
   "Utilities",
-  "Other"
+  "Rent",
+  "Supplies",
+  "Entertainment",
+  "Other",
 ];
