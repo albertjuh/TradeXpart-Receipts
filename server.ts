@@ -339,3 +339,59 @@ startServer().catch(err => {
   console.error("[Server] Critical startup error:", err);
   process.exit(1);
 });
+
+  // PUT /api/receipts/:id - Update a receipt in Google Sheets
+  app.put("/api/receipts/:id", async (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS || '{}');
+      const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+      });
+      const sheets = google.sheets({ version: "v4", auth });
+      const sheetId = process.env.SHEET_ID || "1ssFiH2vtsKfNqDL7QORsoM3GN9OdLZokolYoMLbJ5rc";
+      
+      // Find the row with matching Receipt ID
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: "Sheet1!A:L",
+      });
+      
+      const rows = response.data.values || [];
+      const rowIndex = rows.findIndex((row: string[]) => row[0] === id);
+      
+      if (rowIndex === -1) {
+        return res.status(404).json({ error: "Receipt not found" });
+      }
+      
+      const existingRow = rows[rowIndex];
+      const updatedRow = [
+        existingRow[0],
+        updates.date || existingRow[1],
+        updates.time || existingRow[2],
+        updates.vendor || existingRow[3],
+        updates.amount || existingRow[4],
+        updates.currency || existingRow[5],
+        updates.category || existingRow[6],
+        updates.account_type || existingRow[7],
+        updates.payment_method || existingRow[8],
+        updates.submitted_by || existingRow[9],
+        updates.status || existingRow[10],
+        updates.notes || existingRow[11],
+      ];
+      
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: sheetId,
+        range: `Sheet1!A${rowIndex + 1}:L${rowIndex + 1}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [updatedRow] },
+      });
+      
+      res.json({ success: true, receipt: updatedRow });
+    } catch (error) {
+      console.error("Update error:", error);
+      res.status(500).json({ error: "Failed to update receipt" });
+    }
+  });
