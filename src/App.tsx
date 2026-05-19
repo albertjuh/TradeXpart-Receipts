@@ -581,7 +581,23 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                       initial={{ opacity: 0, scale: 0.98 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.98 }}
-                      onClick={() => setSelectedReceipt(receipt)}
+                      onClick={() => {
+                        setSelectedReceipt(receipt);
+                        if (isIncomplete(receipt)) {
+                          setEditForm({
+                            vendor: receipt.vendor,
+                            amount: receipt.amount,
+                            currency: receipt.currency,
+                            category: receipt.category,
+                            account_type: receipt.account_type,
+                            payment_method: receipt.payment_method ?? '',
+                            notes: receipt.notes ?? '',
+                          });
+                          setIsEditing(true);
+                        } else {
+                          setIsEditing(false);
+                        }
+                      }}
                       className="glass p-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:border-brand-accent/30 transition-all group relative overflow-hidden"
                     >
                       <div className="absolute top-0 left-0 w-1 h-full bg-brand-accent opacity-0 group-hover:opacity-100 transition-all" />
@@ -751,6 +767,30 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
               className="relative glass w-full max-w-lg rounded-[3rem] overflow-y-auto max-h-[90vh] shadow-[0_0_100px_rgba(0,0,0,0.5)]"
             >
               <div className="p-8 md:p-10">
+                {/* Incomplete warning banner */}
+                {isIncomplete(selectedReceipt) && (
+                  <div className="mb-6 p-4 rounded-2xl bg-orange-500/10 border border-orange-500/30">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <span className="text-sm">⚠️</span>
+                      <span className="text-[11px] font-mono font-bold uppercase tracking-widest text-orange-400">
+                        This receipt needs more information
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        (!selectedReceipt.vendor || selectedReceipt.vendor === 'Unknown') && 'Vendor',
+                        selectedReceipt.amount === 0 && 'Amount',
+                        selectedReceipt.account_type === 'Unknown' && 'Account Type',
+                        (selectedReceipt.category === 'Other' && !selectedReceipt.notes) && 'Category / Notes',
+                        selectedReceipt.status === 'pending' && 'Pending Status',
+                      ] as (string | false)[]).filter(Boolean).map(field => (
+                        <span key={field as string} className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold uppercase bg-orange-500/20 text-orange-300 border border-orange-500/40">
+                          {field}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {/* Header: badges + actions */}
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex flex-wrap gap-2">
