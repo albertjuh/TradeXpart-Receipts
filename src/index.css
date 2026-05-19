@@ -12,13 +12,13 @@
   --color-brand-text-muted: #A3A3A3;
 }
 
-/* ── Light mode overrides ────────────────────────────────────────────────────── */
+/* ── Light mode token overrides ─────────────────────────────────────────────── */
 :root[data-theme="light"] {
-  --color-brand-bg: #F5F5F5;
-  --color-brand-card: #FFFFFF;
-  --color-brand-accent: #00CC52;
-  --color-brand-border: #E5E5E5;
-  --color-brand-text-muted: #6B7280;
+  --color-brand-bg: #f3f4f6;
+  --color-brand-card: #ffffff;
+  --color-brand-accent: #00FF66;   /* same green, unchanged */
+  --color-brand-border: #e5e7eb;
+  --color-brand-text-muted: #6b7280;
 }
 
 @layer base {
@@ -35,8 +35,9 @@
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
+  /* Base text colour in light mode */
   :root[data-theme="light"] body {
-    color: #111827;
+    color: #1a1a1a;
   }
 
   * {
@@ -47,67 +48,217 @@
 }
 
 @layer utilities {
+  /* ── Glass card ─────────────────────────────────────────────────────────── */
   .glass {
     @apply bg-brand-card/80 backdrop-blur-xl border border-brand-border;
   }
 
   :root[data-theme="light"] .glass {
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: #ffffff;
+    border-color: #e5e7eb;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
   }
 
+  /* ── Receipt gradient ───────────────────────────────────────────────────── */
   .receipt-gradient {
     background: radial-gradient(circle at 50% 0%, rgba(0, 255, 102, 0.1) 0%, transparent 70%);
   }
 
   :root[data-theme="light"] .receipt-gradient {
-    background: radial-gradient(circle at 50% 0%, rgba(0, 204, 82, 0.08) 0%, transparent 70%);
+    background: radial-gradient(circle at 50% 0%, rgba(0, 255, 102, 0.07) 0%, transparent 70%);
   }
 
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
+  /* ── Scrollbar ──────────────────────────────────────────────────────────── */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
+  /* ════════════════════════════════════════════════════════════════════════
+     LIGHT MODE OVERRIDES
+     All selectors scoped to :root[data-theme="light"] so dark mode is
+     completely unaffected.
+  ════════════════════════════════════════════════════════════════════════ */
 
-  /* Light mode text overrides */
+  /* ── Body / page text ───────────────────────────────────────────────────── */
   :root[data-theme="light"] .text-white {
-    color: #111827;
+    color: #1a1a1a;
   }
 
+  /* ── Muted / label text ─────────────────────────────────────────────────── */
   :root[data-theme="light"] .text-brand-text-muted {
-    color: #6B7280;
+    color: #6b7280;
   }
 
+  /* ── Page background ────────────────────────────────────────────────────── */
   :root[data-theme="light"] .bg-brand-bg {
-    background-color: #F5F5F5;
+    background-color: #f3f4f6;
   }
 
+  /* ── Card background ────────────────────────────────────────────────────── */
   :root[data-theme="light"] .bg-brand-card {
-    background-color: #FFFFFF;
+    background-color: #ffffff;
   }
 
+  /* ── Borders ────────────────────────────────────────────────────────────── */
   :root[data-theme="light"] .border-brand-border {
-    border-color: #E5E5E5;
+    border-color: #e5e7eb;
   }
 
+  /* ── Dark semi-transparent panels → very light gray ────────────────────── */
   :root[data-theme="light"] .bg-black\/30,
   :root[data-theme="light"] .bg-black\/25,
   :root[data-theme="light"] .bg-black\/20 {
-    background-color: rgba(0, 0, 0, 0.04);
+    background-color: #f9fafb;
+    border-color: #e5e7eb;
   }
 
+  /* ── White transparency panels → barely visible ─────────────────────────── */
   :root[data-theme="light"] .bg-white\/\[0\.03\],
-  :root[data-theme="light"] .bg-white\/\[0\.01\] {
-    background-color: rgba(0, 0, 0, 0.02);
+  :root[data-theme="light"] .bg-white\/\[0\.01\],
+  :root[data-theme="light"] .bg-white\/5 {
+    background-color: #f3f4f6;
   }
 
-  :root[data-theme="light"] input,
+  /* ── Neutral / dark card borders used inside sections ───────────────────── */
+  :root[data-theme="light"] .border-brand-border\/40,
+  :root[data-theme="light"] .border-brand-border\/30,
+  :root[data-theme="light"] .border-brand-border\/20 {
+    border-color: #e5e7eb;
+  }
+
+  /* ── Table / row hover ──────────────────────────────────────────────────── */
+  :root[data-theme="light"] .hover\:bg-white\/\[0\.02\]:hover,
+  :root[data-theme="light"] .hover\:bg-white\/\[0\.03\]:hover {
+    background-color: #f9fafb;
+  }
+
+  /* ── Section collapse headers ───────────────────────────────────────────── */
+  /* SectionHeader button sits directly inside .glass — give it a tinted bg */
+  :root[data-theme="light"] .glass > button {
+    background-color: #f3f4f6;
+    color: #374151;
+  }
+
+  :root[data-theme="light"] .glass > button:hover {
+    background-color: #e5e7eb;
+  }
+
+  /* The icon + label text inside SectionHeader */
+  :root[data-theme="light"] .glass > button .text-brand-text-muted {
+    color: #374151;
+    font-weight: 600;
+  }
+
+  /* ── Navigation tabs (inactive) ─────────────────────────────────────────── */
+  :root[data-theme="light"] nav .text-brand-text-muted {
+    color: #374151;
+  }
+
+  /* ── Input / select / textarea ──────────────────────────────────────────── */
+  :root[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   :root[data-theme="light"] select,
   :root[data-theme="light"] textarea {
-    color: #111827;
-    background-color: rgba(0, 0, 0, 0.04);
+    color: #1a1a1a;
+    background-color: #ffffff;
+    border-color: #d1d5db;
   }
+
+  :root[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+  :root[data-theme="light"] select:focus,
+  :root[data-theme="light"] textarea:focus {
+    border-color: #00FF66;
+    box-shadow: 0 0 0 3px rgba(0, 255, 102, 0.12);
+    outline: none;
+  }
+
+  :root[data-theme="light"] input::placeholder,
+  :root[data-theme="light"] textarea::placeholder {
+    color: #9ca3af;
+  }
+
+  /* ── Amber disclaimer / warning box ────────────────────────────────────── */
+  :root[data-theme="light"] .bg-amber-500\/10 {
+    background-color: #fef3c7;
+  }
+
+  :root[data-theme="light"] .border-amber-500\/30 {
+    border-color: #fbbf24;
+  }
+
+  :root[data-theme="light"] .text-amber-400 {
+    color: #92400e;
+  }
+
+  /* ── Orange warning banner ──────────────────────────────────────────────── */
+  :root[data-theme="light"] .bg-orange-500\/10 {
+    background-color: #fff7ed;
+  }
+
+  :root[data-theme="light"] .border-orange-500\/30 {
+    border-color: #fb923c;
+  }
+
+  :root[data-theme="light"] .text-orange-400 {
+    color: #9a3412;
+  }
+
+  /* ── Neutral / dark code-style badges ───────────────────────────────────── */
+  :root[data-theme="light"] .bg-neutral-800\/60 {
+    background-color: #f3f4f6;
+  }
+
+  :root[data-theme="light"] .text-neutral-400 {
+    color: #6b7280;
+  }
+
+  :root[data-theme="light"] .border-neutral-700 {
+    border-color: #d1d5db;
+  }
+
+  /* ── Blue accents (in-transit badge, personal account badge) ────────────── */
+  :root[data-theme="light"] .bg-blue-500\/10 {
+    background-color: #eff6ff;
+  }
+
+  :root[data-theme="light"] .border-blue-500\/30 {
+    border-color: #93c5fd;
+  }
+
+  /* ── Red accents ────────────────────────────────────────────────────────── */
+  :root[data-theme="light"] .bg-red-500\/10 {
+    background-color: #fef2f2;
+  }
+
+  :root[data-theme="light"] .border-red-500\/30 {
+    border-color: #fca5a5;
+  }
+
+  :root[data-theme="light"] .text-red-400 {
+    color: #dc2626;
+  }
+
+  /* ── Purple accents (cleared status) ───────────────────────────────────── */
+  :root[data-theme="light"] .bg-purple-500\/10 {
+    background-color: #f5f3ff;
+  }
+
+  :root[data-theme="light"] .border-purple-500\/30 {
+    border-color: #c4b5fd;
+  }
+
+  /* ── Dividers ───────────────────────────────────────────────────────────── */
+  :root[data-theme="light"] .divide-brand-border > * + * {
+    border-color: #e5e7eb;
+  }
+
+  /* ── White/10 borders used in tax section totals ────────────────────────── */
+  :root[data-theme="light"] .border-white\/10 {
+    border-color: #e5e7eb;
+  }
+
+  :root[data-theme="light"] .border-white\/15 {
+    border-color: #d1d5db;
+  }
+
+  /* ── Backdrop / modal overlays — keep dark ──────────────────────────────── */
+  /* (intentionally not overriding bg-black/80, bg-black/90 so modals stay dark) */
 }
