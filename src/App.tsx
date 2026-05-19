@@ -1,10 +1,10 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, PieChart, Trash2, Camera, Loader2, X, ChevronRight, TrendingUp, Calendar, ArrowUpRight, Activity, Layers, Wallet, LogOut, Package, Pencil, Check } from 'lucide-react';
+import {
+  Plus, Search, PieChart, Trash2, Camera, Loader2, X,
+  ChevronRight, ArrowUpRight,
+  Activity, Layers, Wallet, LogOut, Package, Pencil, Check,
+  Sun, Moon, LayoutDashboard,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import type { Session } from '@supabase/supabase-js';
@@ -13,8 +13,28 @@ import { supabase } from './supabase';
 import Login from './Login';
 import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
+import DashboardPage from './DashboardPage';
+
+type Page = 'dashboard' | 'receipts' | 'shipments';
+
+function useTheme() {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('theme');
+    return (saved === 'light' ? 'light' : 'dark') as 'dark' | 'light';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggle = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'));
+  return { theme, toggle };
+}
 
 export default function App() {
+  const { theme, toggle: toggleTheme } = useTheme();
+
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -27,8 +47,8 @@ export default function App() {
   const [driveConnected, setDriveConnected] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [visibleCount, setVisibleCount] = useState(8);
-const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
-  const [currentPage, setCurrentPage] = useState<'receipts' | 'shipments'>('receipts');
+  const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [openShipmentModal, setOpenShipmentModal] = useState(false);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -52,16 +72,13 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
     await supabase.auth.signOut();
   };
 
-  // Fetch from backend API
-  
   const fetchReceipts = async (retries = 3) => {
     try {
       const response = await fetch('/api/sheets/receipts');
-      const contentType = response.headers.get("content-type");
+      const contentType = response.headers.get('content-type');
 
-      if (response.ok && contentType && contentType.includes("application/json")) {
+      if (response.ok && contentType && contentType.includes('application/json')) {
         const raw = await response.json();
-        // Map Google Sheets columns: Receipt ID | Date | Time | Vendor | Amount | Currency | Category | Account Type | Payment Method | Submitted By | Status | Notes
         const mapped: Receipt[] = (Array.isArray(raw) ? raw : []).map((row: Record<string, string>) => ({
           id: row['Receipt ID'] || row['id'] || '',
           date: row['Date'] || row['date'] || '',
@@ -77,21 +94,14 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
           notes: row['Notes'] || row['notes'] || undefined,
         }));
         setReceipts(mapped);
-      } else if (response.status === 200 && contentType && contentType.includes("text/html")) {
-        // Server is still warming up (AI Studio placeholder page)
-        if (retries > 0) {
-          setTimeout(() => fetchReceipts(retries - 1), 2000);
-        }
+      } else if (response.status === 200 && contentType && contentType.includes('text/html')) {
+        if (retries > 0) setTimeout(() => fetchReceipts(retries - 1), 2000);
       } else {
-        const text = await response.text();
-        console.error(`Failed to fetch receipts: ${response.status} ${response.statusText}`, text);
+        console.error(`Failed to fetch receipts: ${response.status}`);
       }
     } catch (e) {
-      if (retries > 0) {
-        setTimeout(() => fetchReceipts(retries - 1), 2000);
-      } else {
-        console.error("Failed to fetch receipts after retries", e);
-      }
+      if (retries > 0) setTimeout(() => fetchReceipts(retries - 1), 2000);
+      else console.error('Failed to fetch receipts after retries', e);
     }
   };
 
@@ -103,23 +113,17 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
         setDriveConnected(data.connected);
       }
     } catch (e) {
-      console.error("Failed to check drive status", e);
+      console.error('Failed to check drive status', e);
     }
   };
 
   useEffect(() => {
-    // Initial delay to allow server to warm up
     const timeout = setTimeout(() => {
       fetchReceipts();
       checkDriveStatus();
     }, 1000);
-
-    // Poll for updates every 10 seconds
     const interval = setInterval(() => fetchReceipts(0), 10000);
-    return () => {
-      clearTimeout(timeout);
-      clearInterval(interval);
-    };
+    return () => { clearTimeout(timeout); clearInterval(interval); };
   }, []);
 
   const handleScanDrive = async () => {
@@ -130,7 +134,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
       alert(data.message || data.error);
       fetchReceipts();
     } catch (e) {
-      console.error("Scan error", e);
+      console.error('Scan error', e);
     } finally {
       setIsScanning(false);
     }
@@ -145,35 +149,31 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
       const reader = new FileReader();
       reader.onload = async (event) => {
         const base64 = event.target?.result as string;
-        
-        // Analyze via backend
         const isPDF = file.type === 'application/pdf';
-        const analyzeResponse = await fetch(isPDF ? '/api/receipts/analyze-pdf' : '/api/receipts/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(isPDF ? { pdf: base64 } : { image: base64, mimeType: file.type })
-        });
-
-        if (!analyzeResponse.ok) throw new Error("Failed to analyze");
+        const analyzeResponse = await fetch(
+          isPDF ? '/api/receipts/analyze-pdf' : '/api/receipts/analyze',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(isPDF ? { pdf: base64 } : { image: base64, mimeType: file.type }),
+          }
+        );
+        if (!analyzeResponse.ok) throw new Error('Failed to analyze');
         const data = await analyzeResponse.json();
-        
+
         const response = await fetch('/api/receipts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...data, imageUrl: base64 })
+          body: JSON.stringify({ ...data, imageUrl: base64 }),
         });
-
-        if (response.ok) {
-          fetchReceipts();
-        }
-        
+        if (response.ok) fetchReceipts();
         setIsProcessing(false);
         setIsAdding(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
-      console.error("OCR Error", error);
-      alert("Failed to process receipt. Please try again.");
+      console.error('OCR Error', error);
+      alert('Failed to process receipt. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -210,7 +210,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
   };
 
   const deleteReceipt = async (id: string) => {
-    if (confirm("Are you sure you want to delete this receipt?")) {
+    if (confirm('Are you sure you want to delete this receipt?')) {
       try {
         const response = await fetch(`/api/receipts/${id}`, { method: 'DELETE' });
         if (response.ok) {
@@ -218,41 +218,40 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
           setSelectedReceipt(null);
         }
       } catch (e) {
-        console.error("Failed to delete receipt", e);
+        console.error('Failed to delete receipt', e);
       }
     }
   };
 
   const filteredReceipts = useMemo(() => {
-    return receipts.filter(r => {
-      const matchesSearch = r.vendor.toLowerCase().includes(search.toLowerCase());
-      const matchesCategory = filterCategory === 'All'
-        ? true
-        : filterCategory === 'Incomplete'
-        ? isIncomplete(r)
-        : r.category === filterCategory;
-      
-      let matchesDate = true;
-      if (dateRange !== 'All') {
-        const date = parseISO(r.date);
-        const now = new Date();
-        if (dateRange === 'This Month') {
-          matchesDate = isWithinInterval(date, { start: startOfMonth(now), end: endOfMonth(now) });
-        } else if (dateRange === 'Last Month') {
-          const lastMonth = subMonths(now, 1);
-          matchesDate = isWithinInterval(date, { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) });
+    return receipts
+      .filter(r => {
+        const matchesSearch = r.vendor.toLowerCase().includes(search.toLowerCase());
+        const matchesCategory =
+          filterCategory === 'All' ? true :
+          filterCategory === 'Incomplete' ? isIncomplete(r) :
+          r.category === filterCategory;
+        let matchesDate = true;
+        if (dateRange !== 'All') {
+          const date = parseISO(r.date);
+          const now = new Date();
+          if (dateRange === 'This Month') {
+            matchesDate = isWithinInterval(date, { start: startOfMonth(now), end: endOfMonth(now) });
+          } else if (dateRange === 'Last Month') {
+            const lastMonth = subMonths(now, 1);
+            matchesDate = isWithinInterval(date, { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) });
+          }
         }
-      }
-      
-      return matchesSearch && matchesCategory && matchesDate;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        return matchesSearch && matchesCategory && matchesDate;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [receipts, search, filterCategory, dateRange]);
 
   useEffect(() => { setVisibleCount(8); }, [search, filterCategory, dateRange]);
 
-  const totalSpent = useMemo(() => {
-    return filteredReceipts.reduce((sum, r) => sum + r.amount, 0);
-  }, [filteredReceipts]);const reportData = useMemo(() => {
+  const totalSpent = useMemo(() => filteredReceipts.reduce((s, r) => s + r.amount, 0), [filteredReceipts]);
+
+  const reportData = useMemo(() => {
     const now = new Date();
     let start: Date;
     if (reportPeriod === 'daily') {
@@ -269,14 +268,12 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
     const total = filtered.reduce((s, r) => s + r.amount, 0);
     const byCategory: Record<string, number> = {};
     filtered.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + r.amount; });
-    return { total, count: filtered.length, byCategory: Object.entries(byCategory).sort((a,b) => b[1]-a[1]) };
+    return { total, count: filtered.length, byCategory: Object.entries(byCategory).sort((a, b) => b[1] - a[1]) };
   }, [receipts, reportPeriod]);
 
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
-    filteredReceipts.forEach(r => {
-      totals[r.category] = (totals[r.category] || 0) + r.amount;
-    });
+    filteredReceipts.forEach(r => { totals[r.category] = (totals[r.category] || 0) + r.amount; });
     return Object.entries(totals).sort((a, b) => b[1] - a[1]);
   }, [filteredReceipts]);
 
@@ -288,53 +285,69 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
     );
   }
 
-  if (!session) {
-    return <Login />;
-  }
+  if (!session) return <Login />;
 
   const user = session.user;
   const avatarUrl = user.user_metadata?.avatar_url as string | undefined;
   const fullName = (user.user_metadata?.full_name ?? user.email ?? 'User') as string;
 
+  const NAV_ITEMS: { key: Page; label: string; icon: React.ReactNode }[] = [
+    { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { key: 'receipts',  label: 'Receipts',  icon: <Wallet className="w-4 h-4" /> },
+    { key: 'shipments', label: 'Shipments', icon: <Package className="w-4 h-4" /> },
+  ];
+
+  const goToShipments = () => { setCurrentPage('shipments'); setSelectedShipmentId(null); };
+
   return (
     <div className="relative w-full max-w-[100vw] overflow-x-hidden min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
+
       {/* Header */}
-      <header className="sticky top-0 z-40 glass border-b border-brand-border px-6 h-20 flex items-center justify-between w-full max-w-[100vw] overflow-hidden">
+      <header className="sticky top-0 z-40 glass border-b border-brand-border px-4 md:px-6 h-16 md:h-20 flex items-center justify-between w-full max-w-[100vw] overflow-hidden">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-brand-accent rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(0,255,102,0.3)]">
-            <Layers className="text-black w-6 h-6" />
+          <div className="w-9 h-9 md:w-10 md:h-10 bg-brand-accent rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(0,255,102,0.3)]">
+            <Layers className="text-black w-5 h-5 md:w-6 md:h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold tracking-tight leading-none uppercase">tradexparts</h1>
-            <span className="text-[10px] font-mono text-brand-accent tracking-widest uppercase">v1.0.0 // AI-POWERED</span>
+            <h1 className="text-lg md:text-xl font-bold tracking-tight leading-none uppercase">tradexparts</h1>
+            <span className="text-[9px] font-mono text-brand-accent tracking-widest uppercase hidden md:block">v1.0.0 // AI-POWERED</span>
           </div>
         </div>
 
-        {/* Page nav */}
+        {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-1 p-1 bg-brand-bg rounded-xl border border-brand-border">
-          {(['receipts', 'shipments'] as const).map(page => (
+          {NAV_ITEMS.map(({ key, label }) => (
             <button
-              key={page}
-              onClick={() => setCurrentPage(page)}
+              key={key}
+              onClick={() => { setCurrentPage(key); if (key === 'shipments') setSelectedShipmentId(null); }}
               className={`px-4 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-widest transition-all ${
-                currentPage === page
+                currentPage === key
                   ? 'bg-brand-accent text-black font-bold'
                   : 'text-brand-text-muted hover:text-white'
               }`}
             >
-              {page}
+              {label}
             </button>
           ))}
         </nav>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
+          {/* Theme toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-accent hover:border-brand-accent/40 transition-all"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
             <div className="w-1.5 h-1.5 bg-brand-accent rounded-full animate-pulse" />
-            <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-tighter">Cloud Sync Active</span>
+            <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-tighter">Cloud Sync</span>
           </div>
-          
+
           {driveConnected ? (
-            <button 
+            <button
               onClick={handleScanDrive}
               disabled={isScanning}
               className="hidden md:flex bg-brand-card text-brand-accent border border-brand-accent/30 px-4 py-2.5 rounded-full text-[10px] font-mono font-bold items-center gap-2 hover:bg-brand-accent/10 transition-all disabled:opacity-50"
@@ -343,7 +356,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
               SCAN DRIVE
             </button>
           ) : (
-            <a 
+            <a
               href="/api/auth/google"
               className="hidden md:flex bg-brand-card text-brand-text-muted border border-brand-border px-4 py-2.5 rounded-full text-[10px] font-mono font-bold items-center gap-2 hover:text-white hover:border-brand-text-muted transition-all"
             >
@@ -354,13 +367,13 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
 
           <button
             onClick={() => setIsAdding(true)}
-            className="hidden md:flex bg-brand-accent text-black px-6 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
+            className="hidden md:flex bg-brand-accent text-black px-5 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
           >
             <Plus className="w-4 h-4" />
             ADD RECEIPT
           </button>
 
-          <div className="flex items-center gap-3 pl-4 border-l border-brand-border">
+          <div className="flex items-center gap-3 pl-3 border-l border-brand-border">
             {avatarUrl ? (
               <img src={avatarUrl} alt={fullName} referrerPolicy="no-referrer" className="w-8 h-8 rounded-full border border-brand-border object-cover" />
             ) : (
@@ -368,7 +381,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                 {fullName.charAt(0)}
               </div>
             )}
-            <span className="hidden md:block text-[10px] font-mono text-brand-text-muted uppercase tracking-widest max-w-[120px] truncate">
+            <span className="hidden md:block text-[10px] font-mono text-brand-text-muted uppercase tracking-widest max-w-[100px] truncate">
               {fullName}
             </span>
             <button
@@ -382,7 +395,20 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
         </div>
       </header>
 
-      {currentPage === 'shipments' ? (
+      {/* Pages */}
+      {currentPage === 'dashboard' && (
+        <DashboardPage
+          receipts={receipts}
+          userName={fullName}
+          onNewShipment={() => { setCurrentPage('shipments'); setOpenShipmentModal(true); }}
+          onAddReceipt={() => setIsAdding(true)}
+          onGoToReceipts={() => setCurrentPage('receipts')}
+          onGoToShipments={goToShipments}
+          onSelectShipment={(id) => { setCurrentPage('shipments'); setSelectedShipmentId(id); }}
+        />
+      )}
+
+      {currentPage === 'shipments' && (
         selectedShipmentId ? (
           <ShipmentDetailPage
             shipmentId={selectedShipmentId}
@@ -395,297 +421,297 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
             onSelectShipment={setSelectedShipmentId}
           />
         )
-      ) : <main className="w-full max-w-4xl mx-auto px-6 pt-10 pb-28 md:pb-10 space-y-10 overflow-x-hidden box-border">
-        {/* Bento Grid Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Total Spent Card */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="md:col-span-2 glass rounded-3xl p-8 relative overflow-hidden receipt-gradient"
-          >
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-2">
+      )}
+
+      {currentPage === 'receipts' && (
+        <main className="w-full max-w-4xl mx-auto px-6 pt-10 pb-28 md:pb-10 space-y-10 overflow-x-hidden box-border">
+          {/* Bento Grid Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="md:col-span-2 glass rounded-3xl p-8 relative overflow-hidden receipt-gradient"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-brand-accent/10 rounded-lg">
+                    <Wallet className="w-4 h-4 text-brand-accent" />
+                  </div>
+                  <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Total Expenditure</span>
+                </div>
+                <Activity className="w-4 h-4 text-brand-text-muted" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-mono text-brand-accent">TSh</span>
+                <span className="text-7xl font-bold tracking-tighter tabular-nums">
+                  {totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
+              </div>
+              <div className="mt-8 flex items-center gap-4 text-xs font-mono text-brand-text-muted">
+                <div className="flex items-center gap-1">
+                  <span className="text-brand-accent">●</span>
+                  <span>{receipts.length} RECEIPTS STORED</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-brand-accent">●</span>
+                  <span>{CATEGORIES.length} CATEGORIES</span>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="glass rounded-3xl p-8 flex flex-col justify-between"
+            >
+              <div className="flex items-center gap-2 mb-6">
                 <div className="p-2 bg-brand-accent/10 rounded-lg">
-                  <Wallet className="w-4 h-4 text-brand-accent" />
+                  <PieChart className="w-4 h-4 text-brand-accent" />
                 </div>
-                <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Total Expenditure</span>
+                <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Top Sectors</span>
               </div>
-              <Activity className="w-4 h-4 text-brand-text-muted" />
-            </div>
-            
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-mono text-brand-accent">TSh</span>
-              <span className="text-7xl font-bold tracking-tighter tabular-nums">
-                {totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-              </span>
-            </div>
-            
-            <div className="mt-8 flex items-center gap-4 text-xs font-mono text-brand-text-muted">
-              <div className="flex items-center gap-1">
-                <span className="text-brand-accent">●</span>
-                <span>{receipts.length} RECEIPTS STORED</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-brand-accent">●</span>
-                <span>{CATEGORIES.length} CATEGORIES</span>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Top Category Card */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="glass rounded-3xl p-8 flex flex-col justify-between"
-          >
-            <div className="flex items-center gap-2 mb-6">
-              <div className="p-2 bg-brand-accent/10 rounded-lg">
-                <PieChart className="w-4 h-4 text-brand-accent" />
-              </div>
-              <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Top Sectors</span>
-            </div>
-            
-            <div className="space-y-4">
-              {categoryTotals.slice(0, 3).map(([category, amount]) => (
-                <div key={category} className="group">
-                  <div className="flex items-center justify-between text-[10px] font-mono text-brand-text-muted uppercase mb-1">
-                    <span>{category}</span>
-                    <span className="text-white">TSh {amount.toLocaleString()}</span>
-                  </div>
-                  <div className="h-1 bg-brand-border rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(amount / totalSpent) * 100}%` }}
-                      className="h-full bg-brand-accent"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="mt-6 pt-6 border-t border-brand-border">
-              <button className="w-full flex items-center justify-between text-[10px] font-mono text-brand-accent uppercase tracking-widest hover:gap-2 transition-all">
-                <span>View Full Analytics</span>
-                <ArrowUpRight className="w-3 h-3" />
-              </button>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Controls & List */}
-        <div className="space-y-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="relative w-full md:w-96">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text-muted" />
-              <input 
-                type="text" 
-                placeholder="SEARCH ARCHIVE..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 bg-brand-card border border-brand-border rounded-2xl focus:outline-none focus:border-brand-accent/50 focus:ring-4 focus:ring-brand-accent/5 transition-all font-mono text-xs uppercase tracking-widest"
-              />
-            </div>
-            
-            <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 no-scrollbar">
-              {['All', ...CATEGORIES].map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setFilterCategory(cat)}
-                  className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
-                    filterCategory === cat
-                    ? 'bg-brand-accent text-black border-brand-accent font-bold'
-                    : 'bg-brand-card text-brand-text-muted border-brand-border hover:border-brand-text-muted'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-              <button
-                onClick={() => setFilterCategory('Incomplete')}
-                className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
-                  filterCategory === 'Incomplete'
-                    ? 'bg-orange-500 text-black border-orange-500 font-bold'
-                    : 'bg-brand-card text-orange-400 border-orange-500/30 hover:border-orange-400'
-                }`}
-              >
-                Incomplete
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {/* Reports Panel — full width */}
-            <div className="glass rounded-2xl p-4 border border-brand-border">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Spending Report</h2>
-                <div className="flex gap-1">
-                  {(['daily', 'weekly', 'monthly'] as const).map(p => (
-                    <button
-                      key={p}
-                      onClick={() => setReportPeriod(p)}
-                      className={`px-2.5 py-1 rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all ${reportPeriod === p ? 'bg-brand-accent text-black font-bold' : 'text-brand-text-muted border border-brand-border hover:border-brand-accent/50'}`}
-                    >{p}</button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-end justify-between mb-3">
-                <div>
-                  <div className="text-[10px] font-mono text-brand-text-muted uppercase">Total Spent</div>
-                  <div className="text-2xl font-bold font-mono tracking-tighter"><span className="text-brand-accent text-xs mr-1">TSh</span>{reportData.total.toLocaleString()}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] font-mono text-brand-text-muted uppercase">Transactions</div>
-                  <div className="text-2xl font-bold font-mono">{reportData.count}</div>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                {reportData.byCategory.slice(0, 5).map(([cat, amt]) => (
-                  <div key={cat} className="flex items-center gap-2">
-                    <div className="text-[9px] font-mono text-brand-text-muted uppercase w-20 truncate">{cat}</div>
-                    <div className="flex-1 h-1.5 bg-brand-border rounded-full overflow-hidden">
-                      <div className="h-full bg-brand-accent rounded-full" style={{width: `${(amt/reportData.total)*100}%`}} />
+              <div className="space-y-4">
+                {categoryTotals.slice(0, 3).map(([category, amount]) => (
+                  <div key={category} className="group">
+                    <div className="flex items-center justify-between text-[10px] font-mono text-brand-text-muted uppercase mb-1">
+                      <span>{category}</span>
+                      <span className="text-white">TSh {amount.toLocaleString()}</span>
                     </div>
-                    <div className="text-[9px] font-mono text-white w-16 text-right">TSh {amt.toLocaleString()}</div>
+                    <div className="h-1 bg-brand-border rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(amount / totalSpent) * 100}%` }}
+                        className="h-full bg-brand-accent"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* Transaction Log header */}
-            <div className="flex items-center justify-between px-2">
-              <div className="flex items-center gap-2">
-                <div className="w-1 h-4 bg-brand-accent rounded-full" />
-                <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Transaction Log</h2>
+              <div className="mt-6 pt-6 border-t border-brand-border">
+                <button className="w-full flex items-center justify-between text-[10px] font-mono text-brand-accent uppercase tracking-widest hover:gap-2 transition-all">
+                  <span>View Full Analytics</span>
+                  <ArrowUpRight className="w-3 h-3" />
+                </button>
               </div>
-              <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value as any)}
-                className="text-[10px] font-mono bg-transparent border-none focus:ring-0 text-brand-text-muted uppercase tracking-widest cursor-pointer hover:text-brand-accent transition-colors"
-              >
-                <option value="All">All Time</option>
-                <option value="This Month">This Month</option>
-                <option value="Last Month">Last Month</option>
-              </select>
+            </motion.div>
+          </div>
+
+          {/* Controls & List */}
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="relative w-full md:w-96">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text-muted" />
+                <input
+                  type="text"
+                  placeholder="SEARCH ARCHIVE..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3.5 bg-brand-card border border-brand-border rounded-2xl focus:outline-none focus:border-brand-accent/50 focus:ring-4 focus:ring-brand-accent/5 transition-all font-mono text-xs uppercase tracking-widest"
+                />
+              </div>
+              <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 no-scrollbar">
+                {['All', ...CATEGORIES].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setFilterCategory(cat)}
+                    className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
+                      filterCategory === cat
+                        ? 'bg-brand-accent text-black border-brand-accent font-bold'
+                        : 'bg-brand-card text-brand-text-muted border-brand-border hover:border-brand-text-muted'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setFilterCategory('Incomplete')}
+                  className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
+                    filterCategory === 'Incomplete'
+                      ? 'bg-orange-500 text-black border-orange-500 font-bold'
+                      : 'bg-brand-card text-orange-400 border-orange-500/30 hover:border-orange-400'
+                  }`}
+                >
+                  Incomplete
+                </button>
+              </div>
             </div>
 
-            <AnimatePresence mode="popLayout">
-              {filteredReceipts.length > 0 ? (
-                <>
-                <div className="grid grid-cols-1 gap-3">
-                  {filteredReceipts.slice(0, visibleCount).map((receipt) => (
-                    <motion.div
-                      key={receipt.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      onClick={() => {
-                        setSelectedReceipt(receipt);
-                        if (isIncomplete(receipt)) {
-                          setEditForm({
-                            vendor: receipt.vendor,
-                            amount: receipt.amount,
-                            currency: receipt.currency,
-                            category: receipt.category,
-                            account_type: receipt.account_type,
-                            payment_method: receipt.payment_method ?? '',
-                            notes: receipt.notes ?? '',
-                          });
-                          setIsEditing(true);
-                        } else {
-                          setIsEditing(false);
-                        }
-                      }}
-                      className="glass p-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:border-brand-accent/30 transition-all group relative overflow-hidden"
-                    >
-                      <div className="absolute top-0 left-0 w-1 h-full bg-brand-accent opacity-0 group-hover:opacity-100 transition-all" />
-
-                      <div className="flex items-center gap-5">
-                        <div className="w-8 h-8 bg-brand-bg rounded-lg flex items-center justify-center border border-brand-border group-hover:border-brand-accent/20 transition-all flex-shrink-0 text-xs font-bold text-brand-accent uppercase">
-                          {receipt.vendor.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="font-bold text-xs tracking-tight group-hover:text-brand-accent transition-colors uppercase">{receipt.vendor}</div>
-                          <div className="text-[10px] font-mono text-brand-text-muted flex items-center gap-2 mt-1">
-                            <span>{receipt.date}</span>
-                            {receipt.time && <><span className="text-brand-border">/</span><span>{receipt.time}</span></>}
-                            <span className="text-brand-border">/</span>
-                            <span className="uppercase">{receipt.category}</span>
-                          </div>
-                        </div>
+            <div className="space-y-4">
+              {/* Spending Report */}
+              <div className="glass rounded-2xl p-4 border border-brand-border">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Spending Report</h2>
+                  <div className="flex gap-1">
+                    {(['daily', 'weekly', 'monthly'] as const).map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setReportPeriod(p)}
+                        className={`px-2.5 py-1 rounded-lg text-[9px] font-mono uppercase tracking-widest transition-all ${
+                          reportPeriod === p
+                            ? 'bg-brand-accent text-black font-bold'
+                            : 'text-brand-text-muted border border-brand-border hover:border-brand-accent/50'
+                        }`}
+                      >{p}</button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-end justify-between mb-3">
+                  <div>
+                    <div className="text-[10px] font-mono text-brand-text-muted uppercase">Total Spent</div>
+                    <div className="text-2xl font-bold font-mono tracking-tighter">
+                      <span className="text-brand-accent text-xs mr-1">TSh</span>
+                      {reportData.total.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] font-mono text-brand-text-muted uppercase">Transactions</div>
+                    <div className="text-2xl font-bold font-mono">{reportData.count}</div>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {reportData.byCategory.slice(0, 5).map(([cat, amt]) => (
+                    <div key={cat} className="flex items-center gap-2">
+                      <div className="text-[9px] font-mono text-brand-text-muted uppercase w-20 truncate">{cat}</div>
+                      <div className="flex-1 h-1.5 bg-brand-border rounded-full overflow-hidden">
+                        <div className="h-full bg-brand-accent rounded-full" style={{ width: `${(amt / reportData.total) * 100}%` }} />
                       </div>
-
-                      <div className="flex items-center gap-3">
-                        {isIncomplete(receipt) && (
-                          <span className="px-2 py-0.5 rounded-lg text-[8px] font-mono font-bold uppercase border bg-orange-500/10 text-orange-400 border-orange-500/30 hidden sm:block flex-shrink-0">
-                            !
-                          </span>
-                        )}
-                        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-mono font-bold uppercase border hidden sm:block ${
-                          receipt.account_type === 'Business'
-                            ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
-                            : receipt.account_type === 'Personal'
-                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                            : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
-                        }`}>
-                          {receipt.account_type}
-                        </span>
-                        <div className="text-right">
-                          <div className="text-sm font-bold font-mono tracking-tighter">
-                            <span className="text-brand-accent text-xs mr-1">{receipt.currency || 'TSh'}</span>
-                            {receipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                          </div>
-                        </div>
-                        <div className="p-2 rounded-lg bg-brand-border/30 group-hover:bg-brand-accent group-hover:text-black transition-all">
-                          <ChevronRight className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </motion.div>
+                      <div className="text-[9px] font-mono text-white w-16 text-right">TSh {amt.toLocaleString()}</div>
+                    </div>
                   ))}
                 </div>
-                {filteredReceipts.length > visibleCount && (
-                  <button
-                    onClick={() => setVisibleCount(v => v + 8)}
-                    className="w-full mt-3 py-2.5 text-[10px] font-mono uppercase tracking-widest text-brand-text-muted border border-brand-border rounded-xl hover:border-brand-accent/50 hover:text-brand-accent transition-all"
-                  >
-                    Load More ({filteredReceipts.length - visibleCount} remaining)
-                  </button>
-                )}
-                </>
-              ) : (
-                <div className="py-20 text-center glass rounded-3xl border-dashed border-brand-border">
-                  <div className="w-16 h-16 bg-brand-card rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand-border">
-                    <Layers className="w-8 h-8 text-brand-border" />
-                  </div>
-                  <div className="text-xs font-mono text-brand-text-muted uppercase tracking-widest mb-4">No data found in archive</div>
-                  <button 
-                    onClick={() => setIsAdding(true)} 
-                    className="text-brand-accent font-bold text-[10px] font-mono uppercase tracking-widest hover:gap-2 flex items-center justify-center gap-1 mx-auto transition-all"
-                  >
-                    <span>Initialize First Entry</span>
-                    <Plus className="w-3 h-3" />
-                  </button>
+              </div>
+
+              {/* Transaction Log */}
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 bg-brand-accent rounded-full" />
+                  <h2 className="text-xs font-mono text-brand-text-muted uppercase tracking-[0.2em]">Transaction Log</h2>
                 </div>
-              )}
-            </AnimatePresence>
+                <select
+                  value={dateRange}
+                  onChange={(e) => setDateRange(e.target.value as 'All' | 'This Month' | 'Last Month')}
+                  className="text-[10px] font-mono bg-transparent border-none focus:ring-0 text-brand-text-muted uppercase tracking-widest cursor-pointer hover:text-brand-accent transition-colors"
+                >
+                  <option value="All">All Time</option>
+                  <option value="This Month">This Month</option>
+                  <option value="Last Month">Last Month</option>
+                </select>
+              </div>
+
+              <AnimatePresence mode="popLayout">
+                {filteredReceipts.length > 0 ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-3">
+                      {filteredReceipts.slice(0, visibleCount).map((receipt) => (
+                        <motion.div
+                          key={receipt.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.98 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.98 }}
+                          onClick={() => {
+                            setSelectedReceipt(receipt);
+                            if (isIncomplete(receipt)) {
+                              setEditForm({
+                                vendor: receipt.vendor,
+                                amount: receipt.amount,
+                                currency: receipt.currency,
+                                category: receipt.category,
+                                account_type: receipt.account_type,
+                                payment_method: receipt.payment_method ?? '',
+                                notes: receipt.notes ?? '',
+                              });
+                              setIsEditing(true);
+                            } else {
+                              setIsEditing(false);
+                            }
+                          }}
+                          className="glass p-2.5 rounded-xl flex items-center justify-between cursor-pointer hover:border-brand-accent/30 transition-all group relative overflow-hidden"
+                        >
+                          <div className="absolute top-0 left-0 w-1 h-full bg-brand-accent opacity-0 group-hover:opacity-100 transition-all" />
+                          <div className="flex items-center gap-5">
+                            <div className="w-8 h-8 bg-brand-bg rounded-lg flex items-center justify-center border border-brand-border group-hover:border-brand-accent/20 transition-all flex-shrink-0 text-xs font-bold text-brand-accent uppercase">
+                              {receipt.vendor.charAt(0)}
+                            </div>
+                            <div>
+                              <div className="font-bold text-xs tracking-tight group-hover:text-brand-accent transition-colors uppercase">{receipt.vendor}</div>
+                              <div className="text-[10px] font-mono text-brand-text-muted flex items-center gap-2 mt-1">
+                                <span>{receipt.date}</span>
+                                {receipt.time && <><span className="text-brand-border">/</span><span>{receipt.time}</span></>}
+                                <span className="text-brand-border">/</span>
+                                <span className="uppercase">{receipt.category}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {isIncomplete(receipt) && (
+                              <span className="px-2 py-0.5 rounded-lg text-[8px] font-mono font-bold uppercase border bg-orange-500/10 text-orange-400 border-orange-500/30 hidden sm:block flex-shrink-0">!</span>
+                            )}
+                            <span className={`px-2 py-0.5 rounded-lg text-[8px] font-mono font-bold uppercase border hidden sm:block ${
+                              receipt.account_type === 'Business'
+                                ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
+                                : receipt.account_type === 'Personal'
+                                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                                : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
+                            }`}>
+                              {receipt.account_type}
+                            </span>
+                            <div className="text-right">
+                              <div className="text-sm font-bold font-mono tracking-tighter">
+                                <span className="text-brand-accent text-xs mr-1">{receipt.currency || 'TSh'}</span>
+                                {receipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
+                              </div>
+                            </div>
+                            <div className="p-2 rounded-lg bg-brand-border/30 group-hover:bg-brand-accent group-hover:text-black transition-all">
+                              <ChevronRight className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                    {filteredReceipts.length > visibleCount && (
+                      <button
+                        onClick={() => setVisibleCount(v => v + 8)}
+                        className="w-full mt-3 py-2.5 text-[10px] font-mono uppercase tracking-widest text-brand-text-muted border border-brand-border rounded-xl hover:border-brand-accent/50 hover:text-brand-accent transition-all"
+                      >
+                        Load More ({filteredReceipts.length - visibleCount} remaining)
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="py-20 text-center glass rounded-3xl border-dashed border-brand-border">
+                    <div className="w-16 h-16 bg-brand-card rounded-2xl flex items-center justify-center mx-auto mb-4 border border-brand-border">
+                      <Layers className="w-8 h-8 text-brand-border" />
+                    </div>
+                    <div className="text-xs font-mono text-brand-text-muted uppercase tracking-widest mb-4">No data found in archive</div>
+                    <button
+                      onClick={() => setIsAdding(true)}
+                      className="text-brand-accent font-bold text-[10px] font-mono uppercase tracking-widest hover:gap-2 flex items-center justify-center gap-1 mx-auto transition-all"
+                    >
+                      <span>Initialize First Entry</span>
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
-        </div>
-      </main>}
+        </main>
+      )}
 
       {/* Add Receipt Modal */}
       <AnimatePresence>
         {isAdding && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => !isProcessing && setIsAdding(false)}
               className="absolute inset-0 bg-black/80 backdrop-blur-md"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -702,7 +728,6 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                   </button>
                 )}
               </div>
-
               {isProcessing ? (
                 <div className="py-16 flex flex-col items-center justify-center space-y-6">
                   <div className="relative">
@@ -716,7 +741,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                 </div>
               ) : (
                 <div className="space-y-8">
-                  <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-brand-border rounded-[2rem] cursor-pointer hover:border-brand-accent hover:bg-brand-accent/5 transition-all group relative overflow-hidden">
+                  <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-brand-border rounded-[2rem] cursor-pointer hover:border-brand-accent hover:bg-brand-accent/5 transition-all group">
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       <div className="w-16 h-16 bg-brand-card rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-all border border-brand-border group-hover:border-brand-accent">
                         <Camera className="w-8 h-8 text-brand-accent" />
@@ -726,18 +751,16 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                     </div>
                     <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleAddReceipt} />
                   </label>
-                  
                   <div className="relative">
-                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                      <div className="w-full border-t border-brand-border"></div>
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-brand-border" />
                     </div>
                     <div className="relative flex justify-center text-[10px] font-mono">
                       <span className="px-4 bg-brand-card text-brand-text-muted uppercase tracking-widest">Manual Override</span>
                     </div>
                   </div>
-
-                  <button 
-                    onClick={() => alert("Manual entry coming soon! Use AI capture for now.")}
+                  <button
+                    onClick={() => alert('Manual entry coming soon! Use AI capture for now.')}
                     className="w-full py-5 rounded-2xl border border-brand-border font-mono text-[10px] uppercase tracking-[0.3em] hover:bg-brand-border transition-all"
                   >
                     Enter Data Manually
@@ -767,7 +790,6 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
               className="relative glass w-full max-w-lg rounded-[3rem] overflow-y-auto max-h-[90vh] shadow-[0_0_100px_rgba(0,0,0,0.5)]"
             >
               <div className="p-8 md:p-10">
-                {/* Incomplete warning banner */}
                 {isIncomplete(selectedReceipt) && (
                   <div className="mb-6 p-4 rounded-2xl bg-orange-500/10 border border-orange-500/30">
                     <div className="flex items-center gap-2 mb-2.5">
@@ -791,31 +813,20 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                     </div>
                   </div>
                 )}
-                {/* Header: badges + actions */}
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex flex-wrap gap-2">
                     {isEditing ? (
-                      <span className="px-3 py-1 bg-orange-500/10 rounded-lg border border-orange-500/30 text-[10px] font-mono text-orange-400 uppercase tracking-widest">
-                        Editing
-                      </span>
+                      <span className="px-3 py-1 bg-orange-500/10 rounded-lg border border-orange-500/30 text-[10px] font-mono text-orange-400 uppercase tracking-widest">Editing</span>
                     ) : (
                       <>
-                        <span className="px-3 py-1 bg-brand-accent/10 rounded-lg border border-brand-accent/20 text-[10px] font-mono text-brand-accent uppercase tracking-widest">
-                          {selectedReceipt.category}
-                        </span>
+                        <span className="px-3 py-1 bg-brand-accent/10 rounded-lg border border-brand-accent/20 text-[10px] font-mono text-brand-accent uppercase tracking-widest">{selectedReceipt.category}</span>
                         <span className={`px-3 py-1 rounded-lg border text-[10px] font-mono font-bold uppercase ${
-                          selectedReceipt.account_type === 'Business'
-                            ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
-                            : selectedReceipt.account_type === 'Personal'
-                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                            : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
-                        }`}>
-                          {selectedReceipt.account_type}
-                        </span>
+                          selectedReceipt.account_type === 'Business' ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
+                          : selectedReceipt.account_type === 'Personal' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                          : 'bg-neutral-800/60 text-neutral-400 border-neutral-700'
+                        }`}>{selectedReceipt.account_type}</span>
                         {selectedReceipt.status === 'pending' && (
-                          <span className="px-3 py-1 bg-amber-500/10 rounded-lg border border-amber-500/30 text-[10px] font-mono text-amber-400 uppercase tracking-widest">
-                            Pending
-                          </span>
+                          <span className="px-3 py-1 bg-amber-500/10 rounded-lg border border-amber-500/30 text-[10px] font-mono text-amber-400 uppercase tracking-widest">Pending</span>
                         )}
                       </>
                     )}
@@ -850,53 +861,34 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                 </div>
 
                 {isEditing ? (
-                  /* Edit form */
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="col-span-2">
                         <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Vendor</label>
-                        <input
-                          type="text"
-                          value={editForm.vendor ?? ''}
-                          onChange={e => setEditForm(f => ({ ...f, vendor: e.target.value }))}
-                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                        />
+                        <input type="text" value={editForm.vendor ?? ''} onChange={e => setEditForm(f => ({ ...f, vendor: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                       </div>
                       <div>
                         <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Amount</label>
-                        <input
-                          type="number"
-                          value={editForm.amount ?? 0}
-                          onChange={e => setEditForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))}
-                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                        />
+                        <input type="number" value={editForm.amount ?? 0} onChange={e => setEditForm(f => ({ ...f, amount: parseFloat(e.target.value) || 0 }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                       </div>
                       <div>
                         <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Currency</label>
-                        <input
-                          type="text"
-                          value={editForm.currency ?? 'TSh'}
-                          onChange={e => setEditForm(f => ({ ...f, currency: e.target.value }))}
-                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                        />
+                        <input type="text" value={editForm.currency ?? 'TSh'} onChange={e => setEditForm(f => ({ ...f, currency: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                       </div>
                       <div>
                         <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Category</label>
-                        <select
-                          value={editForm.category ?? 'Other'}
-                          onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
-                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                        >
+                        <select value={editForm.category ?? 'Other'} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
                           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Account Type</label>
-                        <select
-                          value={editForm.account_type ?? 'Unknown'}
-                          onChange={e => setEditForm(f => ({ ...f, account_type: e.target.value as Receipt['account_type'] }))}
-                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                        >
+                        <select value={editForm.account_type ?? 'Unknown'} onChange={e => setEditForm(f => ({ ...f, account_type: e.target.value as Receipt['account_type'] }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
                           <option value="Business">Business</option>
                           <option value="Personal">Personal</option>
                           <option value="Unknown">Unknown</option>
@@ -904,11 +896,8 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                       </div>
                       <div className="col-span-2">
                         <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Payment Method</label>
-                        <select
-                          value={editForm.payment_method ?? ''}
-                          onChange={e => setEditForm(f => ({ ...f, payment_method: e.target.value }))}
-                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                        >
+                        <select value={editForm.payment_method ?? ''} onChange={e => setEditForm(f => ({ ...f, payment_method: e.target.value }))}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
                           <option value="">— None —</option>
                           <option value="Cash">Cash</option>
                           <option value="M-Pesa">M-Pesa</option>
@@ -918,48 +907,32 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                       </div>
                       <div className="col-span-2">
                         <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Notes</label>
-                        <textarea
-                          value={editForm.notes ?? ''}
-                          onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                          rows={3}
-                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all resize-none"
-                        />
+                        <textarea value={editForm.notes ?? ''} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} rows={3}
+                          className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all resize-none" />
                       </div>
                     </div>
                     <div className="flex gap-3 pt-2">
-                      <button
-                        onClick={() => setIsEditing(false)}
-                        className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all"
-                      >
+                      <button onClick={() => setIsEditing(false)}
+                        className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all">
                         Cancel
                       </button>
-                      <button
-                        onClick={handleSaveEdit}
-                        disabled={isSaving}
-                        className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-                      >
+                      <button onClick={handleSaveEdit} disabled={isSaving}
+                        className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
                         {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                         Save Changes
                       </button>
                     </div>
                   </div>
                 ) : (
-                  /* Read view */
                   <>
-                    <h2 className="text-3xl font-bold uppercase tracking-tighter leading-none mb-1">
-                      {selectedReceipt.vendor}
-                    </h2>
+                    <h2 className="text-3xl font-bold uppercase tracking-tighter leading-none mb-1">{selectedReceipt.vendor}</h2>
                     <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-8">
                       {selectedReceipt.date}{selectedReceipt.time ? ` · ${selectedReceipt.time}` : ''}
                     </div>
-
                     <div className="flex items-baseline gap-2 mb-8">
                       <span className="text-xl font-mono text-brand-accent">{selectedReceipt.currency || 'TSh'}</span>
-                      <span className="text-5xl font-bold tracking-tighter tabular-nums">
-                        {selectedReceipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
-                      </span>
+                      <span className="text-5xl font-bold tracking-tighter tabular-nums">{selectedReceipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}</span>
                     </div>
-
                     <div className="grid grid-cols-2 gap-3 mb-6">
                       <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
                         <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Receipt ID</div>
@@ -967,9 +940,7 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                       </div>
                       <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
                         <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1">Status</div>
-                        <div className={`text-xs font-mono font-bold uppercase ${selectedReceipt.status === 'pending' ? 'text-amber-400' : 'text-brand-accent'}`}>
-                          {selectedReceipt.status}
-                        </div>
+                        <div className={`text-xs font-mono font-bold uppercase ${selectedReceipt.status === 'pending' ? 'text-amber-400' : 'text-brand-accent'}`}>{selectedReceipt.status}</div>
                       </div>
                       {selectedReceipt.payment_method && (
                         <div className="bg-brand-bg rounded-xl px-4 py-3 border border-brand-border">
@@ -984,18 +955,14 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
                         </div>
                       )}
                     </div>
-
                     {selectedReceipt.notes && (
                       <div className="mb-8">
                         <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mb-2">Notes</div>
                         <p className="text-sm text-brand-text-muted leading-relaxed italic">"{selectedReceipt.notes}"</p>
                       </div>
                     )}
-
-                    <button
-                      onClick={() => deleteReceipt(selectedReceipt.id)}
-                      className="w-full py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 font-mono text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
-                    >
+                    <button onClick={() => deleteReceipt(selectedReceipt.id)}
+                      className="w-full py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 font-mono text-[10px] uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2">
                       <Trash2 className="w-4 h-4" />
                       Purge Transaction
                     </button>
@@ -1007,24 +974,30 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
         )}
       </AnimatePresence>
 
-      {/* Mobile bottom navigation — hidden on md+ */}
+      {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 glass border-t border-brand-border">
-        <div className="flex items-center justify-around px-8 pb-5 pt-2">
+        <div className="flex items-center justify-around px-4 pb-5 pt-2">
           <button
-            onClick={() => setCurrentPage('receipts')}
-            className={`flex flex-col items-center gap-1.5 px-6 py-2 rounded-xl transition-all ${
-              currentPage === 'receipts' ? 'text-brand-accent' : 'text-brand-text-muted'
-            }`}
+            onClick={() => setCurrentPage('dashboard')}
+            className={`flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl transition-all ${currentPage === 'dashboard' ? 'text-brand-accent' : 'text-brand-text-muted'}`}
           >
-            <Wallet className="w-5 h-5" />
-            <span className="text-[8px] font-mono uppercase tracking-widest">Receipts</span>
+            <LayoutDashboard className="w-5 h-5" />
+            <span className="text-[7px] font-mono uppercase tracking-widest">Home</span>
           </button>
 
-          {/* Floating action button */}
+          <button
+            onClick={() => setCurrentPage('receipts')}
+            className={`flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl transition-all ${currentPage === 'receipts' ? 'text-brand-accent' : 'text-brand-text-muted'}`}
+          >
+            <Wallet className="w-5 h-5" />
+            <span className="text-[7px] font-mono uppercase tracking-widest">Receipts</span>
+          </button>
+
           <button
             onClick={() => {
               if (currentPage === 'receipts') setIsAdding(true);
-              else setOpenShipmentModal(true);
+              else if (currentPage === 'shipments') setOpenShipmentModal(true);
+              else setIsAdding(true);
             }}
             className="w-14 h-14 bg-brand-accent text-black rounded-2xl flex items-center justify-center -mt-7 shadow-[0_0_30px_rgba(0,255,102,0.35)] active:scale-95 transition-all"
           >
@@ -1033,12 +1006,18 @@ const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>
 
           <button
             onClick={() => { setCurrentPage('shipments'); setSelectedShipmentId(null); }}
-            className={`flex flex-col items-center gap-1.5 px-6 py-2 rounded-xl transition-all ${
-              currentPage === 'shipments' ? 'text-brand-accent' : 'text-brand-text-muted'
-            }`}
+            className={`flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl transition-all ${currentPage === 'shipments' ? 'text-brand-accent' : 'text-brand-text-muted'}`}
           >
             <Package className="w-5 h-5" />
-            <span className="text-[8px] font-mono uppercase tracking-widest">Shipments</span>
+            <span className="text-[7px] font-mono uppercase tracking-widest">Shipments</span>
+          </button>
+
+          <button
+            onClick={toggleTheme}
+            className="flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl transition-all text-brand-text-muted"
+          >
+            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <span className="text-[7px] font-mono uppercase tracking-widest">Theme</span>
           </button>
         </div>
       </nav>
