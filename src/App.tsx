@@ -234,21 +234,26 @@ export default function App() {
     if (!ocrFields) return;
     setIsProcessing(true);
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id ?? session?.user.id;
       const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
-      const { error } = await supabase.from('receipts').insert({
+      const receiptData = {
         vendor:         ocrFields.vendor,
         amount:         parseFloat(ocrFields.amount) || 0,
         currency:       ocrFields.currency || 'TZS',
         date:           ocrFields.date || null,
         time:           '',
         category:       ocrFields.category || 'Other',
-        account_type:   'Unknown',
+        account_type:   'Business',
         payment_method: ocrFields.payment_method || null,
         notes:          ocrFields.notes || null,
-        status:         'logged',
-        user_id:        session?.user.id,
+        status:         'complete',
+        user_id:        userId,
         submitted_by:   submittedBy,
-      });
+      };
+      console.log('Saving receipt...', receiptData);
+      const { error } = await supabase.from('receipts').insert(receiptData);
+      console.log('Save result:', error);
       if (!error) {
         await fetchReceipts();
         setIsAdding(false);

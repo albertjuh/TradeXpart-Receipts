@@ -9,7 +9,7 @@ export interface Receipt {
   account_type: 'Business' | 'Personal' | 'Unknown';
   payment_method?: string;
   submitted_by?: string;
-  status: 'logged' | 'pending';
+  status: 'logged' | 'pending' | 'complete';
   notes?: string;
 }
 
