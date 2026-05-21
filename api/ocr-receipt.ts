@@ -9,33 +9,35 @@ const PROMPT =
   'If a field is not visible, use null. Return ONLY the JSON object, ' +
   'no explanation, no markdown, no code blocks.';
 
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+function toImageMediaType(mime: string): ImageMediaType {
+  if (mime === 'image/png')  return 'image/png';
+  if (mime === 'image/gif')  return 'image/gif';
+  if (mime === 'image/webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
 export default async function handler(req: any, res: any) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   try {
-    const body: { image?: string } =
+    const body: { image?: string; mimeType?: string } =
       typeof req.body === 'string' ? JSON.parse(req.body) : (req.body ?? {});
-    const { image } = body;
+    const { image, mimeType = 'image/jpeg' } = body;
 
-    if (!image) {
-      res.status(400).json({ error: 'Missing image data' });
-      return;
-    }
+    if (!image) { res.status(400).json({ error: 'Missing image data' }); return; }
 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
+
+    const fileContent = mimeType === 'application/pdf'
+      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: image } }
+      : { type: 'image' as const, source: { type: 'base64' as const, media_type: toImageMediaType(mimeType), data: image } };
 
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -43,17 +45,7 @@ export default async function handler(req: any, res: any) {
       messages: [
         {
           role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: 'image/jpeg',
-                data: image,
-              },
-            },
-            { type: 'text', text: PROMPT },
-          ],
+          content: [fileContent, { type: 'text', text: PROMPT }],
         },
       ],
     });
@@ -62,8 +54,6 @@ export default async function handler(req: any, res: any) {
       | { type: 'text'; text: string }
       | undefined;
     const raw = textBlock?.text ?? '{}';
-
-    // Strip accidental markdown fences
     const cleaned = raw.replace(/```[a-z]*\n?/gi, '').trim();
     const parsed: unknown = JSON.parse(cleaned);
 

@@ -17,6 +17,16 @@ import DashboardPage from './DashboardPage';
 
 type Page = 'dashboard' | 'receipts' | 'shipments';
 
+type ParsedItem = {
+  vendor: string;
+  amount: number;
+  currency: string;
+  date: string | null;
+  category: string;
+  payment_method: string | null;
+  notes: string | null;
+};
+
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('theme');
@@ -58,6 +68,13 @@ export default function App() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [ocrFields, setOcrFields] = useState<Record<string, string> | null>(null);
+
+  // Modal tab + text-parse state
+  const [modalTab, setModalTab] = useState<'scan' | 'type'>('scan');
+  const [typeText, setTypeText] = useState('');
+  const [parsedItems, setParsedItems] = useState<ParsedItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [isSavingAll, setIsSavingAll] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -155,6 +172,10 @@ export default function App() {
     setOcrLoading(false);
     setOcrStatus('idle');
     setOcrFields(null);
+    setTypeText('');
+    setParsedItems([]);
+    setSelectedItems(new Set());
+    setModalTab('scan');
   };
 
   const handleOcrScan = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,22 +183,24 @@ export default function App() {
     if (!file) return;
     e.target.value = '';
 
+    const isPDF = file.type === 'application/pdf';
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const dataUrl = ev.target?.result as string;
-      setOcrPreview(dataUrl);
+      // PDFs can't be shown as <img>, only show preview for images
+      setOcrPreview(isPDF ? null : dataUrl);
       setOcrLoading(true);
       setOcrStatus('idle');
       setOcrFields(null);
 
-      // Strip data:image/...;base64, prefix → raw base64
+      // Strip data:...;base64, prefix → raw base64
       const base64 = dataUrl.split(',')[1] ?? dataUrl;
 
       try {
         const resp = await fetch('/api/ocr-receipt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64 }),
+          body: JSON.stringify({ image: base64, mimeType: file.type }),
         });
         const data = await resp.json();
 
@@ -234,6 +257,80 @@ export default function App() {
       console.error('OCR submit error', err);
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleTextParse = async () => {
+    if (!typeText.trim()) return;
+    setOcrLoading(true);
+    setOcrStatus('idle');
+    setOcrFields(null);
+    setParsedItems([]);
+
+    try {
+      const resp = await fetch('/api/parse-receipt-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: typeText }),
+      });
+      const data = await resp.json();
+      const items: ParsedItem[] = Array.isArray(data) ? data : [];
+
+      if (resp.ok && items.length === 1) {
+        const item = items[0];
+        setOcrFields({
+          vendor:         String(item.vendor        ?? ''),
+          amount:         String(item.amount         ?? ''),
+          currency:       String(item.currency       ?? 'TZS'),
+          date:           String(item.date           ?? ''),
+          category:       String(item.category      ?? 'Other'),
+          payment_method: String(item.payment_method ?? ''),
+          notes:          String(item.notes          ?? ''),
+        });
+        setOcrStatus('success');
+      } else if (resp.ok && items.length > 1) {
+        setParsedItems(items);
+        setSelectedItems(new Set(items.map((_, i) => i)));
+      } else {
+        setOcrStatus('error');
+      }
+    } catch {
+      setOcrStatus('error');
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const handleSaveAllParsed = async () => {
+    const toSave = parsedItems.filter((_, i) => selectedItems.has(i));
+    if (toSave.length === 0) return;
+    setIsSavingAll(true);
+    try {
+      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
+      const rows = toSave.map(item => ({
+        vendor:         item.vendor ?? '',
+        amount:         typeof item.amount === 'number' ? item.amount : (parseFloat(String(item.amount)) || 0),
+        currency:       item.currency ?? 'TZS',
+        date:           item.date ?? null,
+        time:           '',
+        category:       item.category ?? 'Other',
+        account_type:   'Unknown',
+        payment_method: item.payment_method ?? null,
+        notes:          item.notes ?? null,
+        status:         'logged',
+        user_id:        session?.user.id,
+        submitted_by:   submittedBy,
+      }));
+      const { error } = await supabase.from('receipts').insert(rows);
+      if (!error) {
+        await fetchReceipts();
+        setIsAdding(false);
+        resetOcr();
+      }
+    } catch (err) {
+      console.error('Save all error', err);
+    } finally {
+      setIsSavingAll(false);
     }
   };
 
@@ -780,7 +877,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* ── Spinner: Gemini auto-save ── */}
+              {/* ── Saving spinner ── */}
               {isProcessing ? (
                 <div className="py-16 flex flex-col items-center justify-center space-y-6">
                   <div className="relative">
@@ -788,12 +885,12 @@ export default function App() {
                     <Activity className="absolute inset-0 m-auto w-8 h-8 text-brand-accent animate-pulse" />
                   </div>
                   <div className="text-center">
-                    <div className="font-bold text-xl uppercase tracking-tighter">Analyzing Receipt...</div>
-                    <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2">Extracting metadata via AI</div>
+                    <div className="font-bold text-xl uppercase tracking-tighter">Saving Receipt...</div>
+                    <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2">Writing to database</div>
                   </div>
                 </div>
 
-              /* ── Spinner: Anthropic OCR in progress ── */
+              /* ── AI loading spinner ── */
               ) : ocrLoading ? (
                 <div className="py-12 flex flex-col items-center justify-center space-y-4">
                   {ocrPreview && (
@@ -805,85 +902,60 @@ export default function App() {
                   </div>
                 </div>
 
-              /* ── OCR result: editable form ── */
+              /* ── Single item: editable review form ── */
               ) : ocrFields ? (
                 <div className="space-y-4">
-                  {/* Thumbnail + status */}
                   <div className="flex items-center gap-4">
                     {ocrPreview && (
                       <img src={ocrPreview} alt="Scanned receipt" className="w-16 h-16 object-cover rounded-xl border border-brand-border flex-shrink-0" />
                     )}
                     <div>
-                      {ocrStatus === 'success' && (
-                        <div className="flex items-center gap-1.5 text-brand-accent">
-                          <Check className="w-3.5 h-3.5" />
-                          <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Receipt scanned successfully</span>
-                        </div>
-                      )}
-                      {ocrStatus === 'error' && (
-                        <p className="text-[10px] font-mono text-red-400 uppercase tracking-widest">
-                          Could not read receipt — please fill in manually
-                        </p>
-                      )}
-                      <p className="text-[9px] font-mono text-brand-text-muted mt-1">Review and edit the fields below before saving.</p>
+                      <div className="flex items-center gap-1.5 text-brand-accent">
+                        <Check className="w-3.5 h-3.5" />
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Receipt scanned — please review</span>
+                      </div>
+                      <p className="text-[9px] font-mono text-brand-text-muted mt-1">Edit any fields then save.</p>
                     </div>
                   </div>
 
-                  {/* Editable form fields */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="col-span-2">
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Vendor</label>
-                      <input
-                        type="text"
-                        value={ocrFields.vendor}
+                      <input type="text" value={ocrFields.vendor}
                         onChange={e => setOcrFields(f => f ? { ...f, vendor: e.target.value } : f)}
-                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                      />
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                     </div>
                     <div>
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Amount</label>
-                      <input
-                        type="number"
-                        value={ocrFields.amount}
+                      <input type="number" value={ocrFields.amount}
                         onChange={e => setOcrFields(f => f ? { ...f, amount: e.target.value } : f)}
-                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                      />
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                     </div>
                     <div>
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Currency</label>
-                      <input
-                        type="text"
-                        value={ocrFields.currency}
+                      <input type="text" value={ocrFields.currency}
                         onChange={e => setOcrFields(f => f ? { ...f, currency: e.target.value } : f)}
-                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                      />
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                     </div>
                     <div>
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Date</label>
-                      <input
-                        type="date"
-                        value={ocrFields.date}
+                      <input type="date" value={ocrFields.date}
                         onChange={e => setOcrFields(f => f ? { ...f, date: e.target.value } : f)}
-                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                      />
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                     </div>
                     <div>
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Category</label>
-                      <select
-                        value={CATEGORIES.includes(ocrFields.category) ? ocrFields.category : 'Other'}
+                      <select value={CATEGORIES.includes(ocrFields.category) ? ocrFields.category : 'Other'}
                         onChange={e => setOcrFields(f => f ? { ...f, category: e.target.value } : f)}
-                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                      >
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div className="col-span-2">
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Payment Method</label>
-                      <select
-                        value={ocrFields.payment_method}
+                      <select value={ocrFields.payment_method}
                         onChange={e => setOcrFields(f => f ? { ...f, payment_method: e.target.value } : f)}
-                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
-                      >
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
                         <option value="">— Unknown —</option>
                         <option value="Cash">Cash</option>
                         <option value="M-Pesa">M-Pesa</option>
@@ -893,94 +965,147 @@ export default function App() {
                     </div>
                     <div className="col-span-2">
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Notes</label>
-                      <textarea
-                        value={ocrFields.notes}
+                      <textarea value={ocrFields.notes}
                         onChange={e => setOcrFields(f => f ? { ...f, notes: e.target.value } : f)}
                         rows={2}
-                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all resize-none"
-                      />
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all resize-none" />
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex gap-3 pt-1">
-                    <button
-                      onClick={resetOcr}
-                      className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all"
-                    >
-                      Re-scan
+                    <button onClick={resetOcr}
+                      className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all">
+                      ← Back
                     </button>
-                    <button
-                      onClick={handleOcrSubmit}
-                      className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
+                    <button onClick={handleOcrSubmit}
+                      className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2">
                       <Check className="w-3.5 h-3.5" />
                       Save Receipt
                     </button>
                   </div>
                 </div>
 
-              /* ── Default view ── */
+              /* ── Multi-item checklist (TYPE mode) ── */
+              ) : parsedItems.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
+                      {parsedItems.length} items parsed
+                    </p>
+                    <button
+                      onClick={() => setSelectedItems(prev =>
+                        prev.size === parsedItems.length ? new Set() : new Set(parsedItems.map((_, i) => i))
+                      )}
+                      className="text-[9px] font-mono text-brand-accent uppercase tracking-widest hover:opacity-70 transition-opacity"
+                    >
+                      {selectedItems.size === parsedItems.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {parsedItems.map((item, i) => (
+                      <label key={i} className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        selectedItems.has(i) ? 'border-brand-accent/40 bg-brand-accent/5' : 'border-brand-border bg-brand-bg hover:border-brand-border/60'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.has(i)}
+                          onChange={() => setSelectedItems(prev => {
+                            const next = new Set(prev);
+                            next.has(i) ? next.delete(i) : next.add(i);
+                            return next;
+                          })}
+                          className="mt-0.5 accent-[#00FF66] flex-shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-xs uppercase tracking-tight">{item.vendor || 'Unknown'}</div>
+                          <div className="text-[10px] font-mono text-brand-text-muted mt-0.5">
+                            {item.currency || 'TZS'} {(item.amount || 0).toLocaleString()} · {item.category}
+                            {item.date ? ` · ${item.date}` : ''}
+                            {item.payment_method ? ` · ${item.payment_method}` : ''}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={resetOcr}
+                      className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all">
+                      ← Back
+                    </button>
+                    <button onClick={handleSaveAllParsed} disabled={selectedItems.size === 0 || isSavingAll}
+                      className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                      {isSavingAll ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                      Save {selectedItems.size === 1 ? '1 Receipt' : `${selectedItems.size} Receipts`}
+                    </button>
+                  </div>
+                </div>
+
+              /* ── Default: tab selector ── */
               ) : (
-                <div className="space-y-6">
-
-                  {/* ─ NEW: Anthropic OCR scan ─ */}
-                  <div>
-                    <label className="flex items-center justify-center gap-3 w-full py-4 border-2 border-brand-accent/40 rounded-2xl cursor-pointer hover:bg-brand-accent/5 hover:border-brand-accent transition-all group">
-                      <div className="w-9 h-9 bg-brand-accent/10 rounded-xl flex items-center justify-center group-hover:bg-brand-accent/20 transition-all flex-shrink-0">
-                        <Camera className="w-5 h-5 text-brand-accent" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold uppercase tracking-tight text-brand-accent">Scan Receipt</p>
-                        <p className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest">Claude AI extracts fields for review</p>
-                      </div>
-                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleOcrScan} />
-                    </label>
-                    {ocrStatus === 'error' && (
-                      <p className="mt-2 text-center text-[9px] font-mono text-red-400 uppercase tracking-widest">
-                        Could not read receipt — please fill in manually
-                      </p>
-                    )}
+                <div className="space-y-5">
+                  {/* Tab bar */}
+                  <div className="flex p-1 bg-brand-bg rounded-xl border border-brand-border">
+                    {(['scan', 'type'] as const).map(tab => (
+                      <button
+                        key={tab}
+                        onClick={() => { setModalTab(tab); setOcrStatus('idle'); }}
+                        className={`flex-1 py-2 rounded-lg text-[10px] font-mono uppercase tracking-widest transition-all ${
+                          modalTab === tab ? 'bg-brand-accent text-black font-bold' : 'text-brand-text-muted hover:text-white'
+                        }`}
+                      >
+                        {tab === 'scan' ? 'Scan' : 'Type'}
+                      </button>
+                    ))}
                   </div>
 
-                  {/* Divider */}
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-brand-border" />
+                  {/* SCAN tab */}
+                  {modalTab === 'scan' && (
+                    <div className="space-y-4">
+                      <label className="flex items-center justify-center gap-4 w-full py-7 border-2 border-brand-accent/40 rounded-2xl cursor-pointer hover:bg-brand-accent/5 hover:border-brand-accent transition-all group">
+                        <div className="w-10 h-10 bg-brand-accent/10 rounded-xl flex items-center justify-center group-hover:bg-brand-accent/20 transition-all flex-shrink-0">
+                          <Camera className="w-5 h-5 text-brand-accent" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold uppercase tracking-tight text-brand-accent">Scan Receipt</p>
+                          <p className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest mt-0.5">Photo, JPEG, PNG or PDF · Claude AI extracts fields</p>
+                        </div>
+                        <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleOcrScan} />
+                      </label>
+                      {ocrStatus === 'error' && (
+                        <p className="text-center text-[9px] font-mono text-red-400 uppercase tracking-widest">
+                          Could not read receipt — try again or switch to Type mode
+                        </p>
+                      )}
                     </div>
-                    <div className="relative flex justify-center text-[10px] font-mono">
-                      <span className="px-4 bg-brand-card text-brand-text-muted uppercase tracking-widest">or</span>
-                    </div>
-                  </div>
+                  )}
 
-                  {/* ─ Existing: Gemini auto-save ─ */}
-                  <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-brand-border rounded-[2rem] cursor-pointer hover:border-brand-accent hover:bg-brand-accent/5 transition-all group">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <div className="w-14 h-14 bg-brand-card rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-all border border-brand-border group-hover:border-brand-accent">
-                        <Activity className="w-7 h-7 text-brand-accent" />
-                      </div>
-                      <p className="text-sm font-bold uppercase tracking-tighter text-center">Auto-Import via Gemini</p>
-                      <p className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest mt-1 text-center">Saves directly — no review step</p>
+                  {/* TYPE tab */}
+                  {modalTab === 'type' && (
+                    <div className="space-y-4">
+                      <textarea
+                        value={typeText}
+                        onChange={e => setTypeText(e.target.value)}
+                        rows={5}
+                        placeholder={"e.g. Lunch at Mama Ntilie 8500, paid cash\nfuel 45000 TotalEnergies, card\n3 items: rice 12000, sugar 4500, oil 8000"}
+                        className="w-full bg-brand-bg border border-brand-border rounded-2xl px-4 py-3 text-sm font-mono text-white placeholder:text-brand-text-muted/40 focus:outline-none focus:border-brand-accent/50 transition-all resize-none leading-relaxed"
+                      />
+                      <button
+                        onClick={handleTextParse}
+                        disabled={!typeText.trim()}
+                        className="w-full py-4 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                      >
+                        <Activity className="w-4 h-4" />
+                        Parse with AI
+                      </button>
+                      {ocrStatus === 'error' && (
+                        <p className="text-center text-[9px] font-mono text-red-400 uppercase tracking-widest">
+                          Could not parse — try rephrasing or adding more detail
+                        </p>
+                      )}
                     </div>
-                    <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleAddReceipt} />
-                  </label>
-
-                  {/* Divider */}
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-brand-border" />
-                    </div>
-                    <div className="relative flex justify-center text-[10px] font-mono">
-                      <span className="px-4 bg-brand-card text-brand-text-muted uppercase tracking-widest">Manual Override</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => alert('Manual entry coming soon! Use Scan or Auto-Import for now.')}
-                    className="w-full py-4 rounded-2xl border border-brand-border font-mono text-[10px] uppercase tracking-[0.3em] hover:bg-brand-border transition-all"
-                  >
-                    Enter Data Manually
-                  </button>
+                  )}
                 </div>
               )}
             </motion.div>
