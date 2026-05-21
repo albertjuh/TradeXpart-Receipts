@@ -44,8 +44,6 @@ export default function App() {
   const [dateRange, setDateRange] = useState<'All' | 'This Month' | 'Last Month'>('All');
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [driveConnected, setDriveConnected] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
   const [visibleCount, setVisibleCount] = useState(8);
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -78,73 +76,31 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
-  const fetchReceipts = async (retries = 3) => {
-    try {
-      const response = await fetch('/api/sheets/receipts');
-      const contentType = response.headers.get('content-type');
-
-      if (response.ok && contentType && contentType.includes('application/json')) {
-        const raw = await response.json();
-        const mapped: Receipt[] = (Array.isArray(raw) ? raw : []).map((row: Record<string, string>) => ({
-          id: row['Receipt ID'] || row['id'] || '',
-          date: row['Date'] || row['date'] || '',
-          time: row['Time'] || row['time'] || '',
-          vendor: row['Vendor'] || row['vendor'] || '',
-          amount: parseFloat(row['Amount'] || row['amount'] || '0') || 0,
-          currency: row['Currency'] || row['currency'] || 'TSh',
-          category: row['Category'] || row['category'] || 'Other',
-          account_type: (row['Account Type'] || row['account_type'] || 'Unknown') as Receipt['account_type'],
-          payment_method: row['Payment Method'] || row['payment_method'] || undefined,
-          submitted_by: row['Submitted By'] || row['submitted_by'] || undefined,
-          status: (row['Status'] || row['status'] || 'logged') as Receipt['status'],
-          notes: row['Notes'] || row['notes'] || undefined,
-        }));
-        setReceipts(mapped);
-      } else if (response.status === 200 && contentType && contentType.includes('text/html')) {
-        if (retries > 0) setTimeout(() => fetchReceipts(retries - 1), 2000);
-      } else {
-        console.error(`Failed to fetch receipts: ${response.status}`);
-      }
-    } catch (e) {
-      if (retries > 0) setTimeout(() => fetchReceipts(retries - 1), 2000);
-      else console.error('Failed to fetch receipts after retries', e);
-    }
-  };
-
-  const checkDriveStatus = async () => {
-    try {
-      const response = await fetch('/api/auth/status');
-      if (response.ok) {
-        const data = await response.json();
-        setDriveConnected(data.connected);
-      }
-    } catch (e) {
-      console.error('Failed to check drive status', e);
-    }
+  const fetchReceipts = async () => {
+    const { data, error } = await supabase
+      .from('receipts')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) { console.error('Failed to fetch receipts:', error); return; }
+    setReceipts((data ?? []).map((row) => ({
+      id: row.id ?? '',
+      date: row.date ?? '',
+      time: row.time ?? '',
+      vendor: row.vendor ?? '',
+      amount: typeof row.amount === 'number' ? row.amount : (parseFloat(row.amount) || 0),
+      currency: row.currency ?? 'TSh',
+      category: row.category ?? 'Other',
+      account_type: (row.account_type ?? 'Unknown') as Receipt['account_type'],
+      payment_method: row.payment_method ?? undefined,
+      submitted_by: row.submitted_by ?? undefined,
+      status: (row.status ?? 'logged') as Receipt['status'],
+      notes: row.notes ?? undefined,
+    })));
   };
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      fetchReceipts();
-      checkDriveStatus();
-    }, 1000);
-    const interval = setInterval(() => fetchReceipts(0), 10000);
-    return () => { clearTimeout(timeout); clearInterval(interval); };
+    fetchReceipts();
   }, []);
-
-  const handleScanDrive = async () => {
-    setIsScanning(true);
-    try {
-      const response = await fetch('/api/drive/scan', { method: 'POST' });
-      const data = await response.json();
-      alert(data.message || data.error);
-      fetchReceipts();
-    } catch (e) {
-      console.error('Scan error', e);
-    } finally {
-      setIsScanning(false);
-    }
-  };
 
   const handleAddReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -167,14 +123,23 @@ export default function App() {
         if (!analyzeResponse.ok) throw new Error('Failed to analyze');
         const data = await analyzeResponse.json();
 
-        const response = await fetch('/api/receipts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...data, imageUrl: base64 }),
+        const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
+        const { error: insertError } = await supabase.from('receipts').insert({
+          vendor: data.vendor ?? '',
+          amount: typeof data.amount === 'number' ? data.amount : (parseFloat(data.amount) || 0),
+          currency: data.currency ?? 'TZS',
+          date: data.date ?? new Date().toISOString().split('T')[0],
+          time: data.time ?? '',
+          category: data.category ?? 'Other',
+          account_type: 'Unknown',
+          payment_method: data.payment_method ?? null,
+          notes: data.notes ?? null,
+          status: 'logged',
+          user_id: session?.user.id,
+          submitted_by: submittedBy,
         });
-        if (response.ok) fetchReceipts();
+        if (!insertError) { await fetchReceipts(); setIsAdding(false); }
         setIsProcessing(false);
-        setIsAdding(false);
       };
       reader.readAsDataURL(file);
     } catch (error) {
@@ -243,26 +208,27 @@ export default function App() {
     if (!ocrFields) return;
     setIsProcessing(true);
     try {
-      const resp = await fetch('/api/receipts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          vendor:         ocrFields.vendor,
-          amount:         parseFloat(ocrFields.amount) || 0,
-          currency:       ocrFields.currency || 'TZS',
-          date:           ocrFields.date,
-          time:           '',
-          category:       ocrFields.category || 'Other',
-          account_type:   'Unknown',
-          payment_method: ocrFields.payment_method || undefined,
-          notes:          ocrFields.notes || undefined,
-          status:         'logged',
-        }),
+      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
+      const { error } = await supabase.from('receipts').insert({
+        vendor:         ocrFields.vendor,
+        amount:         parseFloat(ocrFields.amount) || 0,
+        currency:       ocrFields.currency || 'TZS',
+        date:           ocrFields.date || null,
+        time:           '',
+        category:       ocrFields.category || 'Other',
+        account_type:   'Unknown',
+        payment_method: ocrFields.payment_method || null,
+        notes:          ocrFields.notes || null,
+        status:         'logged',
+        user_id:        session?.user.id,
+        submitted_by:   submittedBy,
       });
-      if (resp.ok) {
-        fetchReceipts();
+      if (!error) {
+        await fetchReceipts();
         setIsAdding(false);
         resetOcr();
+      } else {
+        console.error('OCR submit error', error);
       }
     } catch (err) {
       console.error('OCR submit error', err);
@@ -281,15 +247,23 @@ export default function App() {
     if (!selectedReceipt) return;
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/receipts/${selectedReceipt.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm),
-      });
-      if (response.ok) {
-        const updated = await response.json();
-        setReceipts(prev => prev.map(r => r.id === selectedReceipt.id ? { ...r, ...updated } : r));
-        setSelectedReceipt(prev => prev ? { ...prev, ...updated } : null);
+      const { data, error } = await supabase
+        .from('receipts')
+        .update({
+          vendor:         editForm.vendor,
+          amount:         editForm.amount,
+          currency:       editForm.currency,
+          category:       editForm.category,
+          account_type:   editForm.account_type,
+          payment_method: editForm.payment_method || null,
+          notes:          editForm.notes || null,
+        })
+        .eq('id', selectedReceipt.id)
+        .select()
+        .single();
+      if (!error && data) {
+        setReceipts(prev => prev.map(r => r.id === selectedReceipt.id ? { ...r, ...data } : r));
+        setSelectedReceipt(prev => prev ? { ...prev, ...data } : null);
         setIsEditing(false);
       } else {
         alert('Failed to save changes');
@@ -305,8 +279,8 @@ export default function App() {
   const deleteReceipt = async (id: string) => {
     if (confirm('Are you sure you want to delete this receipt?')) {
       try {
-        const response = await fetch(`/api/receipts/${id}`, { method: 'DELETE' });
-        if (response.ok) {
+        const { error } = await supabase.from('receipts').delete().eq('id', id);
+        if (!error) {
           setReceipts(prev => prev.filter(r => r.id !== id));
           setSelectedReceipt(null);
         }
@@ -439,26 +413,7 @@ export default function App() {
             <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-tighter">Cloud Sync</span>
           </div>
 
-          {driveConnected ? (
-            <button
-              onClick={handleScanDrive}
-              disabled={isScanning}
-              className="hidden md:flex bg-brand-card text-brand-accent border border-brand-accent/30 px-4 py-2.5 rounded-full text-[10px] font-mono font-bold items-center gap-2 hover:bg-brand-accent/10 transition-all disabled:opacity-50"
-            >
-              {isScanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
-              SCAN DRIVE
-            </button>
-          ) : (
-            <a
-              href="/api/auth/google"
-              className="hidden md:flex bg-brand-card text-brand-text-muted border border-brand-border px-4 py-2.5 rounded-full text-[10px] font-mono font-bold items-center gap-2 hover:text-white hover:border-brand-text-muted transition-all"
-            >
-              <Layers className="w-3 h-3" />
-              CONNECT DRIVE
-            </a>
-          )}
-
-          <button
+<button
             onClick={() => setIsAdding(true)}
             className="hidden md:flex bg-brand-accent text-black px-5 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
           >
