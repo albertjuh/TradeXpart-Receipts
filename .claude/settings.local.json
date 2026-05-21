@@ -3,7 +3,10 @@
     "allow": [
       "PowerShell(Get-ChildItem -Recurse -Path \"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\\\\src\" -Force | Select-Object FullName | ForEach-Object { $_.FullName -replace [regex]::Escape\\(\"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\"\\), \".\" } | Sort-Object)",
       "PowerShell(Get-ChildItem -Recurse -Path \"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\\\\src\" -Force | Where-Object { -not $_.PSIsContainer } | Select-Object @{Name=\"Path\";Expression={$_.FullName -replace [regex]::Escape\\(\"c:\\\\Projects\\\\TraderXparts\\\\TradeXpart-Receipts\\\\\"\\), \"\"}} | Format-Table -HideTableHeaders)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('server.ts','utf8'\\);const lines=c.split\\('\\\\n'\\);lines.forEach\\(\\(l,i\\)=>console.log\\(i+1+'\\\\t'+l\\)\\);\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('@anthropic-ai/sdk'\\)\")"
     ]
   }
 }

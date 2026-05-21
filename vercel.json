@@ -7,18 +7,17 @@
       "config": { "distDir": "dist" }
     },
     {
+      "src": "api/ocr-receipt.ts",
+      "use": "@vercel/node"
+    },
+    {
       "src": "server.ts",
       "use": "@vercel/node"
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/server.ts"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+  "routes": [
+    { "src": "/api/ocr-receipt", "dest": "/api/ocr-receipt.ts" },
+    { "src": "/api/(.*)",        "dest": "/server.ts" },
+    { "src": "/(.*)",            "dest": "/index.html" }
   ]
 }

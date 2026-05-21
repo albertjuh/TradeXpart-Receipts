@@ -55,6 +55,12 @@ export default function App() {
   const [editForm, setEditForm] = useState<Partial<Receipt>>({});
   const [isSaving, setIsSaving] = useState(false);
 
+  // OCR scan state (Anthropic)
+  const [ocrPreview, setOcrPreview] = useState<string | null>(null);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [ocrFields, setOcrFields] = useState<Record<string, string> | null>(null);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -174,6 +180,93 @@ export default function App() {
     } catch (error) {
       console.error('OCR Error', error);
       alert('Failed to process receipt. Please try again.');
+      setIsProcessing(false);
+    }
+  };
+
+  // ── OCR helpers ───────────────────────────────────────────────────────────
+  const resetOcr = () => {
+    setOcrPreview(null);
+    setOcrLoading(false);
+    setOcrStatus('idle');
+    setOcrFields(null);
+  };
+
+  const handleOcrScan = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setOcrPreview(dataUrl);
+      setOcrLoading(true);
+      setOcrStatus('idle');
+      setOcrFields(null);
+
+      // Strip data:image/...;base64, prefix → raw base64
+      const base64 = dataUrl.split(',')[1] ?? dataUrl;
+
+      try {
+        const resp = await fetch('/api/ocr-receipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64 }),
+        });
+        const data = await resp.json();
+
+        if (resp.ok && !data.error) {
+          setOcrFields({
+            vendor:         String(data.vendor        ?? ''),
+            amount:         String(data.amount         ?? ''),
+            currency:       String(data.currency       ?? 'TZS'),
+            date:           String(data.date           ?? ''),
+            category:       String(data.category      ?? 'Other'),
+            payment_method: String(data.payment_method ?? ''),
+            notes:          String(data.notes          ?? ''),
+          });
+          setOcrStatus('success');
+        } else {
+          setOcrStatus('error');
+        }
+      } catch {
+        setOcrStatus('error');
+      } finally {
+        setOcrLoading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleOcrSubmit = async () => {
+    if (!ocrFields) return;
+    setIsProcessing(true);
+    try {
+      const resp = await fetch('/api/receipts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vendor:         ocrFields.vendor,
+          amount:         parseFloat(ocrFields.amount) || 0,
+          currency:       ocrFields.currency || 'TZS',
+          date:           ocrFields.date,
+          time:           '',
+          category:       ocrFields.category || 'Other',
+          account_type:   'Unknown',
+          payment_method: ocrFields.payment_method || undefined,
+          notes:          ocrFields.notes || undefined,
+          status:         'logged',
+        }),
+      });
+      if (resp.ok) {
+        fetchReceipts();
+        setIsAdding(false);
+        resetOcr();
+      }
+    } catch (err) {
+      console.error('OCR submit error', err);
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -708,26 +801,31 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => !isProcessing && setIsAdding(false)}
+              onClick={() => { if (!isProcessing && !ocrLoading) { setIsAdding(false); resetOcr(); } }}
               className="absolute inset-0 bg-black/80 backdrop-blur-md"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative glass w-full max-w-md rounded-[2.5rem] p-10 shadow-2xl overflow-hidden"
+              className="relative glass w-full max-w-md rounded-[2.5rem] p-8 md:p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
-              <div className="flex justify-between items-center mb-10">
+              <div className="flex justify-between items-center mb-8">
                 <div>
                   <h2 className="text-2xl font-bold uppercase tracking-tighter">Capture Data</h2>
-                  <p className="text-[10px] font-mono text-brand-accent uppercase tracking-widest mt-1">Neural OCR Processing</p>
+                  <p className="text-[10px] font-mono text-brand-accent uppercase tracking-widest mt-1">AI Receipt Extraction</p>
                 </div>
-                {!isProcessing && (
-                  <button onClick={() => setIsAdding(false)} className="p-3 hover:bg-brand-border rounded-2xl transition-colors">
+                {!isProcessing && !ocrLoading && (
+                  <button
+                    onClick={() => { setIsAdding(false); resetOcr(); }}
+                    className="p-3 hover:bg-brand-border rounded-2xl transition-colors"
+                  >
                     <X className="w-5 h-5" />
                   </button>
                 )}
               </div>
+
+              {/* ── Spinner: Gemini auto-save ── */}
               {isProcessing ? (
                 <div className="py-16 flex flex-col items-center justify-center space-y-6">
                   <div className="relative">
@@ -736,21 +834,183 @@ export default function App() {
                   </div>
                   <div className="text-center">
                     <div className="font-bold text-xl uppercase tracking-tighter">Analyzing Receipt...</div>
-                    <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2">Extracting metadata via Gemini AI</div>
+                    <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2">Extracting metadata via AI</div>
                   </div>
                 </div>
+
+              /* ── Spinner: Anthropic OCR in progress ── */
+              ) : ocrLoading ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-4">
+                  {ocrPreview && (
+                    <img src={ocrPreview} alt="Receipt preview" className="w-24 h-24 object-cover rounded-xl border border-brand-border mb-2 opacity-60" />
+                  )}
+                  <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
+                  <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
+                    Extracting receipt data...
+                  </div>
+                </div>
+
+              /* ── OCR result: editable form ── */
+              ) : ocrFields ? (
+                <div className="space-y-4">
+                  {/* Thumbnail + status */}
+                  <div className="flex items-center gap-4">
+                    {ocrPreview && (
+                      <img src={ocrPreview} alt="Scanned receipt" className="w-16 h-16 object-cover rounded-xl border border-brand-border flex-shrink-0" />
+                    )}
+                    <div>
+                      {ocrStatus === 'success' && (
+                        <div className="flex items-center gap-1.5 text-brand-accent">
+                          <Check className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Receipt scanned successfully</span>
+                        </div>
+                      )}
+                      {ocrStatus === 'error' && (
+                        <p className="text-[10px] font-mono text-red-400 uppercase tracking-widest">
+                          Could not read receipt — please fill in manually
+                        </p>
+                      )}
+                      <p className="text-[9px] font-mono text-brand-text-muted mt-1">Review and edit the fields below before saving.</p>
+                    </div>
+                  </div>
+
+                  {/* Editable form fields */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Vendor</label>
+                      <input
+                        type="text"
+                        value={ocrFields.vendor}
+                        onChange={e => setOcrFields(f => f ? { ...f, vendor: e.target.value } : f)}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Amount</label>
+                      <input
+                        type="number"
+                        value={ocrFields.amount}
+                        onChange={e => setOcrFields(f => f ? { ...f, amount: e.target.value } : f)}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Currency</label>
+                      <input
+                        type="text"
+                        value={ocrFields.currency}
+                        onChange={e => setOcrFields(f => f ? { ...f, currency: e.target.value } : f)}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Date</label>
+                      <input
+                        type="date"
+                        value={ocrFields.date}
+                        onChange={e => setOcrFields(f => f ? { ...f, date: e.target.value } : f)}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Category</label>
+                      <select
+                        value={CATEGORIES.includes(ocrFields.category) ? ocrFields.category : 'Other'}
+                        onChange={e => setOcrFields(f => f ? { ...f, category: e.target.value } : f)}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                      >
+                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Payment Method</label>
+                      <select
+                        value={ocrFields.payment_method}
+                        onChange={e => setOcrFields(f => f ? { ...f, payment_method: e.target.value } : f)}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                      >
+                        <option value="">— Unknown —</option>
+                        <option value="Cash">Cash</option>
+                        <option value="M-Pesa">M-Pesa</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                        <option value="Card">Card</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Notes</label>
+                      <textarea
+                        value={ocrFields.notes}
+                        onChange={e => setOcrFields(f => f ? { ...f, notes: e.target.value } : f)}
+                        rows={2}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      onClick={resetOcr}
+                      className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all"
+                    >
+                      Re-scan
+                    </button>
+                    <button
+                      onClick={handleOcrSubmit}
+                      className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Save Receipt
+                    </button>
+                  </div>
+                </div>
+
+              /* ── Default view ── */
               ) : (
-                <div className="space-y-8">
-                  <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-brand-border rounded-[2rem] cursor-pointer hover:border-brand-accent hover:bg-brand-accent/5 transition-all group">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <div className="w-16 h-16 bg-brand-card rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-all border border-brand-border group-hover:border-brand-accent">
-                        <Camera className="w-8 h-8 text-brand-accent" />
+                <div className="space-y-6">
+
+                  {/* ─ NEW: Anthropic OCR scan ─ */}
+                  <div>
+                    <label className="flex items-center justify-center gap-3 w-full py-4 border-2 border-brand-accent/40 rounded-2xl cursor-pointer hover:bg-brand-accent/5 hover:border-brand-accent transition-all group">
+                      <div className="w-9 h-9 bg-brand-accent/10 rounded-xl flex items-center justify-center group-hover:bg-brand-accent/20 transition-all flex-shrink-0">
+                        <Camera className="w-5 h-5 text-brand-accent" />
                       </div>
-                      <p className="text-sm font-bold uppercase tracking-tighter text-center">Capture or Upload Receipt</p>
-                      <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-2 text-center">Take photo with camera or pick from library</p>
+                      <div>
+                        <p className="text-sm font-bold uppercase tracking-tight text-brand-accent">Scan Receipt</p>
+                        <p className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest">Claude AI extracts fields for review</p>
+                      </div>
+                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleOcrScan} />
+                    </label>
+                    {ocrStatus === 'error' && (
+                      <p className="mt-2 text-center text-[9px] font-mono text-red-400 uppercase tracking-widest">
+                        Could not read receipt — please fill in manually
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-brand-border" />
+                    </div>
+                    <div className="relative flex justify-center text-[10px] font-mono">
+                      <span className="px-4 bg-brand-card text-brand-text-muted uppercase tracking-widest">or</span>
+                    </div>
+                  </div>
+
+                  {/* ─ Existing: Gemini auto-save ─ */}
+                  <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-brand-border rounded-[2rem] cursor-pointer hover:border-brand-accent hover:bg-brand-accent/5 transition-all group">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <div className="w-14 h-14 bg-brand-card rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-all border border-brand-border group-hover:border-brand-accent">
+                        <Activity className="w-7 h-7 text-brand-accent" />
+                      </div>
+                      <p className="text-sm font-bold uppercase tracking-tighter text-center">Auto-Import via Gemini</p>
+                      <p className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest mt-1 text-center">Saves directly — no review step</p>
                     </div>
                     <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleAddReceipt} />
                   </label>
+
+                  {/* Divider */}
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
                       <div className="w-full border-t border-brand-border" />
@@ -759,9 +1019,10 @@ export default function App() {
                       <span className="px-4 bg-brand-card text-brand-text-muted uppercase tracking-widest">Manual Override</span>
                     </div>
                   </div>
+
                   <button
-                    onClick={() => alert('Manual entry coming soon! Use AI capture for now.')}
-                    className="w-full py-5 rounded-2xl border border-brand-border font-mono text-[10px] uppercase tracking-[0.3em] hover:bg-brand-border transition-all"
+                    onClick={() => alert('Manual entry coming soon! Use Scan or Auto-Import for now.')}
+                    className="w-full py-4 rounded-2xl border border-brand-border font-mono text-[10px] uppercase tracking-[0.3em] hover:bg-brand-border transition-all"
                   >
                     Enter Data Manually
                   </button>
