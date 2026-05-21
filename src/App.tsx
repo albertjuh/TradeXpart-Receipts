@@ -180,6 +180,7 @@ export default function App() {
 
   const handleOcrScan = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    console.log('OCR scan started', file?.name, file?.type);
     if (!file) return;
     e.target.value = '';
 
@@ -187,22 +188,23 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const dataUrl = ev.target?.result as string;
-      // PDFs can't be shown as <img>, only show preview for images
       setOcrPreview(isPDF ? null : dataUrl);
       setOcrLoading(true);
       setOcrStatus('idle');
       setOcrFields(null);
 
-      // Strip data:...;base64, prefix → raw base64
       const base64 = dataUrl.split(',')[1] ?? dataUrl;
 
       try {
+        console.log('Calling API /api/ocr-receipt ...');
         const resp = await fetch('/api/ocr-receipt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64, mimeType: file.type }),
         });
+        console.log('API response status:', resp.status);
         const data = await resp.json();
+        console.log('API response data:', data);
 
         if (resp.ok && !data.error) {
           setOcrFields({
@@ -218,7 +220,8 @@ export default function App() {
         } else {
           setOcrStatus('error');
         }
-      } catch {
+      } catch (err) {
+        console.log('OCR API call failed:', err);
         setOcrStatus('error');
       } finally {
         setOcrLoading(false);
@@ -261,6 +264,7 @@ export default function App() {
   };
 
   const handleTextParse = async () => {
+    console.log('Text parse started', typeText);
     if (!typeText.trim()) return;
     setOcrLoading(true);
     setOcrStatus('idle');
@@ -268,12 +272,15 @@ export default function App() {
     setParsedItems([]);
 
     try {
+      console.log('Calling API /api/parse-receipt-text ...');
       const resp = await fetch('/api/parse-receipt-text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: typeText }),
       });
+      console.log('API response status:', resp.status);
       const data = await resp.json();
+      console.log('API response data:', data);
       const items: ParsedItem[] = Array.isArray(data) ? data : [];
 
       if (resp.ok && items.length === 1) {
@@ -294,7 +301,8 @@ export default function App() {
       } else {
         setOcrStatus('error');
       }
-    } catch {
+    } catch (err) {
+      console.log('Text parse API call failed:', err);
       setOcrStatus('error');
     } finally {
       setOcrLoading(false);
@@ -1093,8 +1101,7 @@ export default function App() {
                       />
                       <button
                         onClick={handleTextParse}
-                        disabled={!typeText.trim()}
-                        className="w-full py-4 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                        className="w-full py-4 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
                         <Activity className="w-4 h-4" />
                         Parse with AI
