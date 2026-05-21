@@ -7,7 +7,8 @@
       "Bash(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('server.ts','utf8'\\);const lines=c.split\\('\\\\n'\\);lines.forEach\\(\\(l,i\\)=>console.log\\(i+1+'\\\\t'+l\\)\\);\")",
       "Bash(npm install *)",
       "Bash(node -e \"require\\('@anthropic-ai/sdk'\\)\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); const has = \\(s\\) => Object.keys\\(p[s]||{}\\).includes\\('@vercel/node'\\); console.log\\('deps:', has\\('dependencies'\\), 'devDeps:', has\\('devDependencies'\\)\\);\")"
     ]
   }
 }
