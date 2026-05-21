@@ -37,7 +37,7 @@ const handler = async (req, res) => {
             contentBlock,
             {
               type: 'text',
-              text: 'Extract receipt data from this image. Return ONLY valid JSON with these exact fields: vendor (string), amount (number), currency (string, default TZS if unclear), date (string YYYY-MM-DD or null), category (one of: Food, Transport, Utilities, Supplies, Services, Accommodation, Other), payment_method (string or null), notes (string or null). If a field is not visible use null. Return ONLY the JSON object, no explanation, no markdown, no code blocks.',
+              text: 'Extract receipt data from this image. Return ONLY valid JSON with these exact fields: vendor (string), amount (number), currency (string, default TZS if unclear), date (string YYYY-MM-DD or null), category (one of: Food, Transport, Utilities, Supplies, Services, Accommodation, Other), payment_method (string or null), notes (string or null). IMPORTANT: vendor means the business where money was spent (restaurant, shop, supplier, service provider). Payment facilitators like M-Pesa, Airtel Money, Mixx by Yas, TigoPesa, Halopesa, NMB, CRDB are NOT vendors — they are payment methods. If the receipt shows a payment app sending money TO a business, the vendor is the DESTINATION business, and the payment_method is the app (e.g. M-Pesa). If the actual vendor is unclear, use null for vendor. If a field is not visible use null. Return ONLY the JSON object, no explanation, no markdown, no code blocks.',
             },
           ],
         }],

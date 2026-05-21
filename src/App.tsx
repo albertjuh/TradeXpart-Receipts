@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import jsQR from 'jsqr';
 import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
@@ -30,6 +31,11 @@ type ParsedItem = {
 type ChatPhase = 'account_type' | 'category' | 'shipment' | 'confirm';
 type ChatMessage = { role: 'ai' | 'user'; text: string };
 type ModalShipment = { id: string; commodity: string; reference_number: string; type: string };
+type BulkResult = {
+  vendor: string; amount: number; currency: string; date: string | null;
+  category: string; payment_method: string | null; notes: string | null;
+  error?: boolean;
+};
 
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -74,7 +80,7 @@ export default function App() {
   const [ocrFields, setOcrFields] = useState<Record<string, string> | null>(null);
 
   // Modal tab + text-parse state
-  const [modalTab, setModalTab] = useState<'scan' | 'type'>('scan');
+  const [modalTab, setModalTab] = useState<'scan' | 'type' | 'bulk'>('scan');
   const [typeText, setTypeText] = useState('');
   const [parsedItems, setParsedItems] = useState<ParsedItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
@@ -87,6 +93,18 @@ export default function App() {
   const [chatPhase, setChatPhase] = useState<ChatPhase>('account_type');
   const [modalShipments, setModalShipments] = useState<ModalShipment[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // QR + bulk upload state
+  const [qrMsg, setQrMsg] = useState<string | null>(null);
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [bulkResults, setBulkResults] = useState<BulkResult[]>([]);
+  const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
+  const [bulkDragging, setBulkDragging] = useState(false);
+  const [bulkEditIndex, setBulkEditIndex] = useState<number | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -192,6 +210,16 @@ export default function App() {
     setChatMessages([]);
     setChatExtracted(null);
     setChatPhase('account_type');
+    setQrMsg(null);
+    setBulkFiles([]);
+    setBulkResults([]);
+    setBulkSelected(new Set());
+    setBulkProgress(null);
+    setBulkProcessing(false);
+    setBulkSaving(false);
+    setBulkSuccess(null);
+    setBulkDragging(false);
+    setBulkEditIndex(null);
   };
 
   const getChatAiMessage = (phase: ChatPhase, data: Record<string, string>): string => {
@@ -256,6 +284,32 @@ export default function App() {
     setChatExtracted(null);
   };
 
+  const detectQR = (dataUrl: string): Promise<string | null> =>
+    new Promise(resolve => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        resolve(code ? code.data : null);
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = ev => resolve(((ev.target?.result as string) ?? '').split(',')[1] ?? '');
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
   const handleOcrScan = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     console.log('OCR scan started', file?.name, file?.type);
@@ -270,10 +324,42 @@ export default function App() {
       setOcrLoading(true);
       setOcrStatus('idle');
       setOcrFields(null);
+      setQrMsg(null);
 
       const base64 = dataUrl.split(',')[1] ?? dataUrl;
 
       try {
+        // QR code detection for images
+        if (!isPDF) {
+          const qrData = await detectQR(dataUrl);
+          if (qrData) {
+            setQrMsg('QR code detected — extracting data...');
+            console.log('QR code found:', qrData);
+            const resp = await fetch('/api/parse-receipt-text', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: qrData }),
+            });
+            const data = await resp.json();
+            const items: ParsedItem[] = Array.isArray(data) ? data : [];
+            if (resp.ok && items.length >= 1) {
+              initChat({
+                vendor:         String(items[0].vendor         ?? ''),
+                amount:         String(items[0].amount          ?? ''),
+                currency:       String(items[0].currency        ?? 'TZS'),
+                date:           String(items[0].date            ?? ''),
+                category:       String(items[0].category       ?? 'Other'),
+                payment_method: String(items[0].payment_method  ?? ''),
+                notes:          String(items[0].notes           ?? ''),
+              });
+            } else {
+              setOcrStatus('error');
+            }
+            return;
+          }
+          setQrMsg('No QR code found — using image OCR...');
+        }
+
         console.log('Calling API /api/ocr-receipt ...');
         const resp = await fetch('/api/ocr-receipt', {
           method: 'POST',
@@ -421,6 +507,96 @@ export default function App() {
     } finally {
       setIsSavingAll(false);
     }
+  };
+
+  const handleBulkProcess = async () => {
+    if (bulkFiles.length === 0) return;
+    setBulkProcessing(true);
+    setBulkResults([]);
+    setBulkSelected(new Set());
+    setBulkSuccess(null);
+    const results: BulkResult[] = [];
+    for (let i = 0; i < bulkFiles.length; i++) {
+      setBulkProgress({ current: i + 1, total: bulkFiles.length });
+      const file = bulkFiles[i];
+      try {
+        const base64 = await fileToBase64(file);
+        const resp = await fetch('/api/ocr-receipt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, mimeType: file.type }),
+        });
+        const data = await resp.json();
+        if (resp.ok && !data.error) {
+          results.push({
+            vendor:         String(data.vendor         ?? ''),
+            amount:         typeof data.amount === 'number' ? data.amount : (parseFloat(String(data.amount)) || 0),
+            currency:       String(data.currency        ?? 'TZS'),
+            date:           data.date ? String(data.date) : null,
+            category:       String(data.category       ?? 'Other'),
+            payment_method: data.payment_method ? String(data.payment_method) : null,
+            notes:          data.notes ? String(data.notes) : null,
+          });
+        } else {
+          results.push({ vendor: '', amount: 0, currency: 'TZS', date: null, category: 'Other', payment_method: null, notes: null, error: true });
+        }
+      } catch {
+        results.push({ vendor: '', amount: 0, currency: 'TZS', date: null, category: 'Other', payment_method: null, notes: null, error: true });
+      }
+    }
+    setBulkResults(results);
+    setBulkSelected(new Set(results.map((_, i) => i).filter(i => !results[i].error)));
+    setBulkProgress(null);
+    setBulkProcessing(false);
+  };
+
+  const handleBulkSave = async () => {
+    const toSave = bulkResults.filter((r, i) => bulkSelected.has(i) && !r.error);
+    if (toSave.length === 0) return;
+    setBulkSaving(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id ?? session?.user.id;
+      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
+      const rows = toSave.map(item => ({
+        vendor: item.vendor || '', amount: item.amount || 0, currency: item.currency || 'TZS',
+        date: item.date || null, time: '', category: item.category || 'Other',
+        account_type: 'Business' as Receipt['account_type'],
+        payment_method: item.payment_method || null, notes: item.notes || null,
+        status: 'complete' as Receipt['status'], user_id: userId, submitted_by: submittedBy,
+      }));
+      const { error } = await supabase.from('receipts').insert(rows);
+      if (!error) {
+        const count = toSave.length;
+        setBulkSuccess(`${count} receipt${count !== 1 ? 's' : ''} saved successfully`);
+        await fetchReceipts();
+        setTimeout(() => { setIsAdding(false); resetOcr(); }, 2000);
+      } else {
+        console.error('Bulk save error', error);
+      }
+    } catch (err) {
+      console.error('Bulk save error', err);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleBulkUpdateItem = () => {
+    if (bulkEditIndex === null || !ocrFields) return;
+    setBulkResults(prev => prev.map((item, i) => i === bulkEditIndex ? {
+      ...item,
+      vendor:         ocrFields.vendor         || item.vendor,
+      amount:         parseFloat(ocrFields.amount) || item.amount,
+      currency:       ocrFields.currency        || item.currency,
+      date:           ocrFields.date            || item.date,
+      category:       ocrFields.category        || item.category,
+      payment_method: ocrFields.payment_method  || item.payment_method,
+      notes:          ocrFields.notes           || item.notes,
+      error:          false,
+    } : item));
+    setOcrFields(null);
+    setBulkEditIndex(null);
+    setModalTab('bulk');
   };
 
   const isIncomplete = (r: Receipt) =>
@@ -997,7 +1173,7 @@ export default function App() {
                   )}
                   <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
                   <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
-                    Extracting receipt data...
+                    {qrMsg ?? 'Extracting receipt data...'}
                   </div>
                 </div>
 
@@ -1162,15 +1338,27 @@ export default function App() {
                   </div>
 
                   <div className="flex gap-3 pt-1">
-                    <button onClick={resetOcr}
+                    <button
+                      onClick={() => {
+                        if (bulkEditIndex !== null) { setOcrFields(null); setBulkEditIndex(null); setModalTab('bulk'); }
+                        else { resetOcr(); }
+                      }}
                       className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all">
                       ← Back
                     </button>
-                    <button onClick={handleOcrSubmit}
-                      className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2">
-                      <Check className="w-3.5 h-3.5" />
-                      Save Receipt
-                    </button>
+                    {bulkEditIndex !== null ? (
+                      <button onClick={handleBulkUpdateItem}
+                        className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2">
+                        <Check className="w-3.5 h-3.5" />
+                        Update in List
+                      </button>
+                    ) : (
+                      <button onClick={handleOcrSubmit}
+                        className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2">
+                        <Check className="w-3.5 h-3.5" />
+                        Save Receipt
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1236,15 +1424,15 @@ export default function App() {
                 <div className="space-y-5">
                   {/* Tab bar */}
                   <div className="flex p-1 bg-brand-bg rounded-xl border border-brand-border">
-                    {(['scan', 'type'] as const).map(tab => (
+                    {(['scan', 'type', 'bulk'] as const).map(tab => (
                       <button
                         key={tab}
-                        onClick={() => { setModalTab(tab); setOcrStatus('idle'); }}
+                        onClick={() => { setModalTab(tab); setOcrStatus('idle'); setBulkDragging(false); }}
                         className={`flex-1 py-2 rounded-lg text-[10px] font-mono uppercase tracking-widest transition-all ${
                           modalTab === tab ? 'bg-brand-accent text-black font-bold' : 'text-brand-text-muted hover:text-white'
                         }`}
                       >
-                        {tab === 'scan' ? 'Scan' : 'Type'}
+                        {tab === 'scan' ? 'Scan' : tab === 'type' ? 'Type' : 'Bulk'}
                       </button>
                     ))}
                   </div>
@@ -1291,6 +1479,171 @@ export default function App() {
                         <p className="text-center text-[9px] font-mono text-red-400 uppercase tracking-widest">
                           Could not parse — try rephrasing or adding more detail
                         </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* BULK tab */}
+                  {modalTab === 'bulk' && (
+                    <div className="space-y-3">
+                      {/* Drop zone */}
+                      {!bulkSuccess && (
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); setBulkDragging(true); }}
+                          onDragLeave={() => setBulkDragging(false)}
+                          onDrop={(e) => {
+                            e.preventDefault(); setBulkDragging(false);
+                            const files = Array.from(e.dataTransfer.files).filter(
+                              f => f.type.startsWith('image/') || f.type === 'application/pdf'
+                            );
+                            if (files.length) { setBulkFiles(prev => [...prev, ...files]); setBulkResults([]); setBulkSuccess(null); }
+                          }}
+                          className={`w-full py-6 border-2 rounded-2xl text-center transition-all ${
+                            bulkDragging ? 'border-brand-accent bg-brand-accent/10' : 'border-dashed border-brand-border hover:border-brand-accent/50 cursor-pointer'
+                          }`}
+                        >
+                          <label className="flex flex-col items-center gap-2 cursor-pointer">
+                            <div className="w-10 h-10 bg-brand-accent/10 rounded-xl flex items-center justify-center">
+                              <Layers className="w-5 h-5 text-brand-accent" />
+                            </div>
+                            <p className="text-sm font-bold uppercase tracking-tight text-brand-accent">Drop receipts here</p>
+                            <p className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest">
+                              or click to select — any number of images or PDFs
+                            </p>
+                            <input type="file" multiple accept="image/*,application/pdf" className="hidden"
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files ?? []);
+                                if (files.length) { setBulkFiles(prev => [...prev, ...files]); setBulkResults([]); setBulkSuccess(null); }
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        </div>
+                      )}
+
+                      {/* File list */}
+                      {bulkFiles.length > 0 && !bulkSuccess && !bulkProcessing && !bulkResults.length && (
+                        <div className="space-y-1 max-h-36 overflow-y-auto">
+                          {bulkFiles.map((f, i) => (
+                            <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-brand-bg rounded-lg border border-brand-border">
+                              <span className="text-[10px] font-mono text-white truncate flex-1">{f.name}</span>
+                              <span className="text-[9px] font-mono text-brand-text-muted flex-shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
+                              <button onClick={() => setBulkFiles(prev => prev.filter((_, j) => j !== i))}
+                                className="text-brand-text-muted hover:text-red-400 transition-colors flex-shrink-0">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Progress bar */}
+                      {bulkProgress && (
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-[10px] font-mono text-brand-text-muted uppercase">
+                            <span>Processing {bulkProgress.current} of {bulkProgress.total}...</span>
+                            <span>{Math.round((bulkProgress.current / bulkProgress.total) * 100)}%</span>
+                          </div>
+                          <div className="h-1.5 bg-brand-border rounded-full overflow-hidden">
+                            <div className="h-full bg-brand-accent transition-all duration-300 rounded-full"
+                              style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Process button */}
+                      {bulkFiles.length > 0 && !bulkProcessing && !bulkResults.length && !bulkSuccess && (
+                        <button onClick={handleBulkProcess}
+                          className="w-full py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2">
+                          <Activity className="w-4 h-4" />
+                          Process All ({bulkFiles.length})
+                        </button>
+                      )}
+
+                      {/* Extracted results */}
+                      {bulkResults.length > 0 && !bulkSuccess && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
+                              {bulkResults.filter(r => !r.error).length}/{bulkResults.length} extracted
+                            </p>
+                            <button
+                              onClick={() => {
+                                const valid = bulkResults.map((_, i) => i).filter(i => !bulkResults[i].error);
+                                setBulkSelected(prev => prev.size === valid.length ? new Set() : new Set(valid));
+                              }}
+                              className="text-[9px] font-mono text-brand-accent uppercase tracking-widest hover:opacity-70 transition-opacity">
+                              {bulkSelected.size === bulkResults.filter(r => !r.error).length ? 'Deselect All' : 'Select All'}
+                            </button>
+                          </div>
+                          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                            {bulkResults.map((item, i) => (
+                              <div key={i} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${
+                                item.error ? 'border-red-500/30 bg-red-500/5'
+                                  : bulkSelected.has(i) ? 'border-brand-accent/40 bg-brand-accent/5'
+                                  : 'border-brand-border bg-brand-bg'
+                              }`}>
+                                {!item.error && (
+                                  <input type="checkbox" checked={bulkSelected.has(i)}
+                                    onChange={() => setBulkSelected(prev => {
+                                      const next = new Set(prev);
+                                      next.has(i) ? next.delete(i) : next.add(i);
+                                      return next;
+                                    })}
+                                    className="accent-[#00FF66] flex-shrink-0" />
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  {item.error ? (
+                                    <div className="text-[9px] font-mono text-red-400 uppercase">Failed to extract</div>
+                                  ) : (
+                                    <>
+                                      <div className="font-bold text-[10px] uppercase tracking-tight truncate">{item.vendor || 'Unknown vendor'}</div>
+                                      <div className="text-[9px] font-mono text-brand-text-muted mt-0.5">
+                                        {item.currency} {item.amount.toLocaleString()} · {item.category}{item.date ? ` · ${item.date}` : ''}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                                {!item.error && (
+                                  <button
+                                    onClick={() => {
+                                      setBulkEditIndex(i);
+                                      setOcrFields({
+                                        vendor:         bulkResults[i].vendor,
+                                        amount:         String(bulkResults[i].amount),
+                                        currency:       bulkResults[i].currency,
+                                        date:           bulkResults[i].date ?? '',
+                                        category:       bulkResults[i].category,
+                                        payment_method: bulkResults[i].payment_method ?? '',
+                                        notes:          bulkResults[i].notes ?? '',
+                                        account_type:   'Business',
+                                      });
+                                    }}
+                                    className="p-1.5 rounded-lg text-brand-text-muted hover:text-brand-accent hover:bg-brand-accent/10 transition-all flex-shrink-0">
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          {bulkSelected.size > 0 && (
+                            <button onClick={handleBulkSave} disabled={bulkSaving}
+                              className="w-full py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                              {bulkSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                              Save Selected ({bulkSelected.size})
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Success */}
+                      {bulkSuccess && (
+                        <div className="py-10 flex flex-col items-center gap-4">
+                          <div className="w-16 h-16 bg-brand-accent/10 rounded-full flex items-center justify-center">
+                            <Check className="w-8 h-8 text-brand-accent" />
+                          </div>
+                          <div className="text-brand-accent font-bold font-mono text-sm uppercase tracking-tight text-center">{bulkSuccess}</div>
+                        </div>
                       )}
                     </div>
                   )}
