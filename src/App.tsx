@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
@@ -26,6 +26,10 @@ type ParsedItem = {
   payment_method: string | null;
   notes: string | null;
 };
+
+type ChatPhase = 'account_type' | 'category' | 'shipment' | 'confirm';
+type ChatMessage = { role: 'ai' | 'user'; text: string };
+type ModalShipment = { id: string; commodity: string; reference_number: string; type: string };
 
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -75,6 +79,14 @@ export default function App() {
   const [parsedItems, setParsedItems] = useState<ParsedItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [isSavingAll, setIsSavingAll] = useState(false);
+
+  // Chat step state
+  const [chatActive, setChatActive] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatExtracted, setChatExtracted] = useState<Record<string, string> | null>(null);
+  const [chatPhase, setChatPhase] = useState<ChatPhase>('account_type');
+  const [modalShipments, setModalShipments] = useState<ModalShipment[]>([]);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -176,6 +188,72 @@ export default function App() {
     setParsedItems([]);
     setSelectedItems(new Set());
     setModalTab('scan');
+    setChatActive(false);
+    setChatMessages([]);
+    setChatExtracted(null);
+    setChatPhase('account_type');
+  };
+
+  const getChatAiMessage = (phase: ChatPhase, data: Record<string, string>): string => {
+    if (phase === 'account_type') return 'Is this a Business or Personal expense?';
+    if (phase === 'category') return 'What category fits best?';
+    if (phase === 'shipment') {
+      const amt = parseFloat(data.amount) || 0;
+      return `This is a large expense (${data.currency || 'TZS'} ${amt.toLocaleString()}) — would you like to link it to one of your shipments?`;
+    }
+    return 'All set! Ready to save this receipt?';
+  };
+
+  const getNextChatPhase = (current: ChatPhase, data: Record<string, string>): ChatPhase => {
+    if (current === 'account_type') {
+      if (!data.category || data.category === 'Other') return 'category';
+      if ((parseFloat(data.amount) || 0) > 50000) return 'shipment';
+      return 'confirm';
+    }
+    if (current === 'category') {
+      if ((parseFloat(data.amount) || 0) > 50000) return 'shipment';
+      return 'confirm';
+    }
+    return 'confirm';
+  };
+
+  const initChat = (data: Record<string, string>) => {
+    setChatExtracted(data);
+    setChatPhase('account_type');
+    setChatMessages([{ role: 'ai', text: 'Is this a Business or Personal expense?' }]);
+    setChatActive(true);
+  };
+
+  const handleChatAnswer = (answer: string) => {
+    setChatMessages(prev => [...prev, { role: 'user', text: answer }]);
+    const patch =
+      chatPhase === 'account_type' ? { account_type: answer } :
+      chatPhase === 'category'     ? { category: answer }     :
+      chatPhase === 'shipment'     ? { shipment_link: answer } : {};
+    const updatedData = { ...(chatExtracted ?? {}), ...patch };
+    setChatExtracted(updatedData);
+    const next = getNextChatPhase(chatPhase, updatedData);
+    setChatPhase(next);
+    setTimeout(() => {
+      setChatMessages(prev => [...prev, { role: 'ai', text: getChatAiMessage(next, updatedData) }]);
+    }, 350);
+  };
+
+  const goToForm = () => {
+    const d = chatExtracted ?? {};
+    setOcrFields({
+      vendor:         d.vendor         ?? '',
+      amount:         d.amount         ?? '',
+      currency:       d.currency       ?? 'TZS',
+      date:           d.date           ?? '',
+      category:       d.category       ?? 'Other',
+      payment_method: d.payment_method ?? '',
+      notes:          d.notes          ?? '',
+      account_type:   d.account_type   ?? 'Business',
+    });
+    setChatActive(false);
+    setChatMessages([]);
+    setChatExtracted(null);
   };
 
   const handleOcrScan = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,16 +285,15 @@ export default function App() {
         console.log('API response data:', data);
 
         if (resp.ok && !data.error) {
-          setOcrFields({
-            vendor:         String(data.vendor        ?? ''),
-            amount:         String(data.amount         ?? ''),
-            currency:       String(data.currency       ?? 'TZS'),
-            date:           String(data.date           ?? ''),
-            category:       String(data.category      ?? 'Other'),
-            payment_method: String(data.payment_method ?? ''),
-            notes:          String(data.notes          ?? ''),
+          initChat({
+            vendor:         String(data.vendor         ?? ''),
+            amount:         String(data.amount          ?? ''),
+            currency:       String(data.currency        ?? 'TZS'),
+            date:           String(data.date            ?? ''),
+            category:       String(data.category       ?? 'Other'),
+            payment_method: String(data.payment_method  ?? ''),
+            notes:          String(data.notes           ?? ''),
           });
-          setOcrStatus('success');
         } else {
           setOcrStatus('error');
         }
@@ -244,7 +321,7 @@ export default function App() {
         date:           ocrFields.date || null,
         time:           '',
         category:       ocrFields.category || 'Other',
-        account_type:   'Business',
+        account_type:   (ocrFields.account_type || 'Business') as Receipt['account_type'],
         payment_method: ocrFields.payment_method || null,
         notes:          ocrFields.notes || null,
         status:         'complete',
@@ -290,16 +367,15 @@ export default function App() {
 
       if (resp.ok && items.length === 1) {
         const item = items[0];
-        setOcrFields({
-          vendor:         String(item.vendor        ?? ''),
-          amount:         String(item.amount         ?? ''),
-          currency:       String(item.currency       ?? 'TZS'),
-          date:           String(item.date           ?? ''),
-          category:       String(item.category      ?? 'Other'),
-          payment_method: String(item.payment_method ?? ''),
-          notes:          String(item.notes          ?? ''),
+        initChat({
+          vendor:         String(item.vendor         ?? ''),
+          amount:         String(item.amount          ?? ''),
+          currency:       String(item.currency        ?? 'TZS'),
+          date:           String(item.date            ?? ''),
+          category:       String(item.category       ?? 'Other'),
+          payment_method: String(item.payment_method  ?? ''),
+          notes:          String(item.notes           ?? ''),
         });
-        setOcrStatus('success');
       } else if (resp.ok && items.length > 1) {
         setParsedItems(items);
         setSelectedItems(new Set(items.map((_, i) => i)));
@@ -425,6 +501,16 @@ export default function App() {
   }, [receipts, search, filterCategory, dateRange]);
 
   useEffect(() => { setVisibleCount(8); }, [search, filterCategory, dateRange]);
+
+  useEffect(() => {
+    if (!isAdding) return;
+    supabase.from('shipments').select('id, commodity, reference_number, type')
+      .then(({ data }) => setModalShipments((data ?? []) as ModalShipment[]));
+  }, [isAdding]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const totalSpent = useMemo(() => filteredReceipts.reduce((s, r) => s + r.amount, 0), [filteredReceipts]);
 
@@ -913,6 +999,96 @@ export default function App() {
                   <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
                     Extracting receipt data...
                   </div>
+                </div>
+
+              /* ── AI chat step ── */
+              ) : chatActive ? (
+                <div className="space-y-4">
+                  {/* Summary card */}
+                  {chatExtracted && (
+                    <div className="flex items-center justify-between p-3 rounded-xl border border-brand-accent/40 bg-brand-accent/5">
+                      <div>
+                        <div className="text-xs font-bold font-mono uppercase tracking-tight">{chatExtracted.vendor || 'Receipt'}</div>
+                        <div className="text-[9px] font-mono text-brand-text-muted mt-0.5">{chatExtracted.date || '—'}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-bold font-mono text-brand-accent">
+                          {chatExtracted.currency || 'TZS'} {(parseFloat(chatExtracted.amount) || 0).toLocaleString()}
+                        </div>
+                        <div className="text-[9px] font-mono text-brand-text-muted uppercase">{chatExtracted.category}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Chat bubbles */}
+                  <div className="flex flex-col gap-2 max-h-[240px] overflow-y-auto pr-1">
+                    {chatMessages.map((msg, i) => (
+                      <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] px-3 py-2 rounded-xl text-xs font-mono leading-relaxed ${
+                          msg.role === 'ai'
+                            ? 'bg-brand-card border-l-2 border-brand-accent text-white'
+                            : 'bg-brand-accent text-black font-bold'
+                        }`}>
+                          {msg.text}
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={chatEndRef} />
+                  </div>
+
+                  {/* Response buttons */}
+                  {chatPhase === 'account_type' && (
+                    <div className="flex gap-2">
+                      {(['Business', 'Personal'] as const).map(opt => (
+                        <button key={opt} onClick={() => handleChatAnswer(opt)}
+                          className={`flex-1 py-3 rounded-xl border font-mono text-[10px] uppercase tracking-widest transition-all font-bold ${
+                            opt === 'Business'
+                              ? 'border-brand-accent/60 text-brand-accent hover:bg-brand-accent hover:text-black'
+                              : 'border-brand-border text-brand-text-muted hover:border-brand-text-muted hover:text-white'
+                          }`}>{opt}</button>
+                      ))}
+                    </div>
+                  )}
+
+                  {chatPhase === 'category' && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(['Food', 'Transport', 'Utilities', 'Supplies', 'Services', 'Accommodation'] as const).map(cat => (
+                        <button key={cat} onClick={() => handleChatAnswer(cat)}
+                          className="py-2 rounded-xl border border-brand-border text-brand-text-muted font-mono text-[9px] uppercase tracking-widest hover:border-brand-accent/50 hover:text-brand-accent transition-all">
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {chatPhase === 'shipment' && (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                      {modalShipments.map(s => (
+                        <button key={s.id}
+                          onClick={() => handleChatAnswer(`${s.reference_number} — ${s.commodity}`)}
+                          className="w-full py-2 px-3 rounded-xl border border-brand-border text-left font-mono text-[10px] text-brand-text-muted hover:border-brand-accent/50 hover:text-white transition-all">
+                          <span className="text-brand-accent">{s.reference_number}</span> · {s.commodity}
+                        </button>
+                      ))}
+                      <button onClick={() => handleChatAnswer('No shipment link')}
+                        className="w-full py-2 px-3 rounded-xl border border-dashed border-brand-border/50 font-mono text-[9px] text-brand-text-muted/60 hover:text-brand-text-muted transition-all">
+                        Skip — no shipment link
+                      </button>
+                    </div>
+                  )}
+
+                  {chatPhase === 'confirm' && (
+                    <button onClick={goToForm}
+                      className="w-full py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2">
+                      <Check className="w-3.5 h-3.5" />
+                      Review &amp; Save Receipt
+                    </button>
+                  )}
+
+                  <button onClick={goToForm}
+                    className="w-full text-center text-[9px] font-mono text-brand-text-muted/40 uppercase tracking-widest hover:text-brand-text-muted transition-colors py-1">
+                    Skip to form →
+                  </button>
                 </div>
 
               /* ── Single item: editable review form ── */
