@@ -1,23 +1,9 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
-    },
-    {
-      "src": "api/ocr-receipt.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "server.ts",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    { "src": "/api/ocr-receipt", "dest": "/api/ocr-receipt.ts" },
-    { "src": "/api/(.*)",        "dest": "/server.ts" },
-    { "src": "/(.*)",            "dest": "/index.html" }
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/((?!assets|api).*)", "destination": "/index.html" }
   ]
 }
