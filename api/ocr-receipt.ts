@@ -1,65 +1,68 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const PROMPT =
-  'Extract receipt data from this image. Return ONLY valid JSON with ' +
-  'these exact fields: vendor (string), amount (number), currency (string, ' +
-  'default to TZS if unclear), date (string in YYYY-MM-DD format or null), ' +
-  'category (one of: Food, Transport, Utilities, Supplies, Services, ' +
-  'Accommodation, Other), payment_method (string or null), notes (string or null). ' +
-  'If a field is not visible, use null. Return ONLY the JSON object, ' +
-  'no explanation, no markdown, no code blocks.';
-
-type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
-
-function toImageMediaType(mime: string): ImageMediaType {
-  if (mime === 'image/png')  return 'image/png';
-  if (mime === 'image/gif')  return 'image/gif';
-  if (mime === 'image/webp') return 'image/webp';
-  return 'image/jpeg';
-}
-
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
-  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const body: { image?: string; mimeType?: string } =
-      typeof req.body === 'string' ? JSON.parse(req.body) : (req.body ?? {});
-    const { image, mimeType = 'image/jpeg' } = body;
+    const { image, mimeType = 'image/jpeg' } = req.body;
+    if (!image) return res.status(400).json({ error: 'No image provided' });
 
-    if (!image) { res.status(400).json({ error: 'Missing image data' }); return; }
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
+    const isDocument = mimeType === 'application/pdf';
 
-    const fileContent = mimeType === 'application/pdf'
-      ? { type: 'document' as const, source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: image } }
-      : { type: 'image' as const, source: { type: 'base64' as const, media_type: toImageMediaType(mimeType), data: image } };
+    const contentBlock = isDocument
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: image } }
+      : { type: 'image', source: { type: 'base64', media_type: mimeType, data: image } };
 
-    const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [
-        {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        messages: [{
           role: 'user',
-          content: [fileContent, { type: 'text', text: PROMPT }],
-        },
-      ],
+          content: [
+            contentBlock,
+            {
+              type: 'text',
+              text: 'Extract receipt data from this image. Return ONLY valid JSON with these exact fields: vendor (string), amount (number), currency (string, default TZS if unclear), date (string YYYY-MM-DD or null), category (one of: Food, Transport, Utilities, Supplies, Services, Accommodation, Other), payment_method (string or null), notes (string or null). If a field is not visible use null. Return ONLY the JSON object, no explanation, no markdown, no code blocks.',
+            },
+          ],
+        }],
+      }),
     });
 
-    const textBlock = message.content.find((c: any) => c.type === 'text') as
-      | { type: 'text'; text: string }
-      | undefined;
-    const raw = textBlock?.text ?? '{}';
-    const cleaned = raw.replace(/```[a-z]*\n?/gi, '').trim();
-    const parsed: unknown = JSON.parse(cleaned);
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('Anthropic error:', err);
+      return res.status(500).json({ error: 'Anthropic API error', detail: err });
+    }
 
-    res.status(200).json(parsed);
-  } catch (err) {
-    console.error('[ocr-receipt] error:', err);
-    res.status(500).json({ error: 'Could not extract receipt data' });
+    const data = await response.json();
+    const text = data.content?.[0]?.text ?? '';
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    } catch {
+      return res.status(200).json({ error: 'Could not parse receipt data', raw: text });
+    }
+
+    return res.status(200).json(parsed);
+  } catch (err: any) {
+    console.error('OCR error:', err);
+    return res.status(500).json({ error: 'Server error', detail: err.message });
   }
 }
