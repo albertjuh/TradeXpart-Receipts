@@ -153,43 +153,36 @@ export default function App() {
 
     setIsProcessing(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
-        const isPDF = file.type === 'application/pdf';
-        const analyzeResponse = await fetch(
-          isPDF ? '/api/receipts/analyze-pdf' : '/api/receipts/analyze',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(isPDF ? { pdf: base64 } : { image: base64, mimeType: file.type }),
-          }
-        );
-        if (!analyzeResponse.ok) throw new Error('Failed to analyze');
-        const data = await analyzeResponse.json();
-
-        const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
-        const { error: insertError } = await supabase.from('receipts').insert({
-          vendor: data.vendor ?? '',
-          amount: typeof data.amount === 'number' ? data.amount : (parseFloat(data.amount) || 0),
-          currency: data.currency ?? 'TZS',
-          date: data.date ?? new Date().toISOString().split('T')[0],
-          time: data.time ?? '',
-          category: data.category ?? 'Other',
-          account_type: 'Unknown',
-          payment_method: data.payment_method ?? null,
-          notes: data.notes ?? null,
-          status: 'logged',
-          user_id: session?.user.id,
-          submitted_by: submittedBy,
-        });
-        if (!insertError) { await fetchReceipts(); setIsAdding(false); }
-        setIsProcessing(false);
-      };
-      reader.readAsDataURL(file);
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = ev => resolve(ev.target?.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const isPDF = file.type === 'application/pdf';
+      const analyzeResponse = await fetch(
+        isPDF ? '/api/receipts/analyze-pdf' : '/api/receipts/analyze',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(isPDF ? { pdf: dataUrl } : { image: dataUrl, mimeType: file.type }),
+        }
+      );
+      if (!analyzeResponse.ok) throw new Error('Failed to analyze');
+      const data = await analyzeResponse.json();
+      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
+      const { error: insertError } = await supabase.from('receipts').insert({
+        vendor: data.vendor ?? '', amount: typeof data.amount === 'number' ? data.amount : (parseFloat(data.amount) || 0),
+        currency: data.currency ?? 'TZS', date: data.date ?? new Date().toISOString().split('T')[0],
+        time: data.time ?? '', category: data.category ?? 'Other', account_type: 'Unknown',
+        payment_method: data.payment_method ?? null, notes: data.notes ?? null,
+        status: 'logged', user_id: session?.user.id, submitted_by: submittedBy,
+      });
+      if (!insertError) { await fetchReceipts(); setIsAdding(false); }
     } catch (error) {
       console.error('OCR Error', error);
       alert('Failed to process receipt. Please try again.');
+    } finally {
       setIsProcessing(false);
     }
   };
@@ -394,22 +387,31 @@ export default function App() {
   };
 
   const handleOcrSubmit = async (skipDupCheck = false) => {
+    console.log('Save button clicked, skipDupCheck:', skipDupCheck, 'ocrFields:', ocrFields);
     if (!ocrFields) return;
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id ?? session?.user.id;
+
+    // Use session directly — no async getUser() needed
+    const userId = session?.user.id;
+    const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
 
     if (!skipDupCheck) {
-      const isDup = await checkDuplicate(ocrFields.vendor, parseFloat(ocrFields.amount) || 0, ocrFields.date || null, userId);
-      if (isDup) {
-        dupPendingRef.current = () => handleOcrSubmit(true);
-        setDupWarning({ vendor: ocrFields.vendor, amount: parseFloat(ocrFields.amount) || 0, date: ocrFields.date || null });
-        return;
+      try {
+        const isDup = await Promise.race([
+          checkDuplicate(ocrFields.vendor, parseFloat(ocrFields.amount) || 0, ocrFields.date || null, userId),
+          new Promise<boolean>(resolve => setTimeout(() => resolve(false), 4000)),
+        ]);
+        if (isDup) {
+          dupPendingRef.current = () => handleOcrSubmit(true);
+          setDupWarning({ vendor: ocrFields.vendor, amount: parseFloat(ocrFields.amount) || 0, date: ocrFields.date || null });
+          return;
+        }
+      } catch {
+        console.warn('Duplicate check failed, proceeding with save');
       }
     }
 
     setIsProcessing(true);
     try {
-      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
       const receiptData = {
         vendor:         ocrFields.vendor,
         amount:         parseFloat(ocrFields.amount) || 0,
@@ -554,8 +556,7 @@ export default function App() {
         results.push({ vendor: '', amount: 0, currency: 'TZS', date: null, category: 'Other', payment_method: null, notes: null, error: true });
       }
     }
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id ?? session?.user.id;
+    const userId = session?.user.id;
     const dupChecks = await Promise.all(results.map(r =>
       r.error ? Promise.resolve(false) : checkDuplicate(r.vendor, r.amount, r.date, userId)
     ));
@@ -572,8 +573,7 @@ export default function App() {
     if (toSave.length === 0) return;
     setBulkSaving(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id ?? session?.user.id;
+      const userId = session?.user.id;
       const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
       const rows = toSave.map(item => ({
         vendor: item.vendor || '', amount: item.amount || 0, currency: item.currency || 'TZS',
@@ -618,10 +618,14 @@ export default function App() {
 
   const checkDuplicate = async (vendor: string, amount: number, date: string | null, userId: string | undefined): Promise<boolean> => {
     if (!vendor || !amount) return false;
-    let q = supabase.from('receipts').select('id', { count: 'exact', head: true }).eq('user_id', userId ?? '').eq('vendor', vendor).eq('amount', amount);
-    if (date) q = q.eq('date', date);
-    const { count } = await q;
-    return (count ?? 0) > 0;
+    try {
+      let q = supabase.from('receipts').select('id', { count: 'exact', head: true }).eq('user_id', userId ?? '').eq('vendor', vendor).eq('amount', amount);
+      if (date) q = q.eq('date', date);
+      const { count } = await q;
+      return (count ?? 0) > 0;
+    } catch {
+      return false;
+    }
   };
 
   const handleDupSaveAnyway = async () => {
@@ -1195,6 +1199,14 @@ export default function App() {
                   <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
                     {qrMsg ?? 'Extracting receipt data...'}
                   </div>
+                  <button
+                    onClick={() => {
+                      setOcrLoading(false);
+                      setOcrFields({ vendor: '', amount: '', currency: 'TZS', date: '', category: 'Other', payment_method: '', notes: '', account_type: 'Business' });
+                    }}
+                    className="text-[9px] font-mono text-brand-text-muted/50 uppercase tracking-widest hover:text-brand-text-muted transition-colors py-1 mt-2">
+                    Enter manually →
+                  </button>
                 </div>
 
               /* ── Duplicate warning ── */
@@ -1313,7 +1325,7 @@ export default function App() {
                   )}
 
                   <button onClick={goToForm}
-                    className="w-full text-center text-[9px] font-mono text-brand-text-muted/40 uppercase tracking-widest hover:text-brand-text-muted transition-colors py-1">
+                    className="w-full py-2 rounded-xl border border-brand-border/50 text-center text-[9px] font-mono text-brand-text-muted uppercase tracking-widest hover:text-white hover:border-brand-border transition-colors">
                     Skip to form →
                   </button>
                 </div>
@@ -1321,17 +1333,26 @@ export default function App() {
               /* ── Single item: editable review form ── */
               ) : ocrFields ? (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    {ocrPreview && (
-                      <img src={ocrPreview} alt="Scanned receipt" className="w-16 h-16 object-cover rounded-xl border border-brand-border flex-shrink-0" />
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1.5 text-brand-accent">
-                        <Check className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Receipt scanned — please review</span>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 flex-1">
+                      {ocrPreview && (
+                        <img src={ocrPreview} alt="Scanned receipt" className="w-16 h-16 object-cover rounded-xl border border-brand-border flex-shrink-0" />
+                      )}
+                      <div>
+                        <div className="flex items-center gap-1.5 text-brand-accent">
+                          <Check className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Receipt scanned — please review</span>
+                        </div>
+                        <p className="text-[9px] font-mono text-brand-text-muted mt-1">Edit any fields then save.</p>
                       </div>
-                      <p className="text-[9px] font-mono text-brand-text-muted mt-1">Edit any fields then save.</p>
                     </div>
+                    {bulkEditIndex === null && (
+                      <button
+                        onClick={() => handleOcrSubmit(true)}
+                        className="flex-shrink-0 px-3 py-1.5 rounded-lg border border-brand-accent/40 text-brand-accent font-mono text-[8px] uppercase tracking-widest hover:bg-brand-accent hover:text-black transition-all">
+                        Quick Save →
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
