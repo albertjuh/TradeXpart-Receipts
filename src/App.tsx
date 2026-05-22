@@ -110,11 +110,29 @@ export default function App() {
   const dupPendingRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
+    // Resolve immediately if session is already cached locally
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setSession(session);
+        setAuthLoading(false);
+      }
+    }).catch(() => {
+      // Network error — onAuthStateChange or the timeout will resolve this
+    });
+
+    // Safety net: never leave the app stuck on the spinner
+    const authTimeout = setTimeout(() => setAuthLoading(false), 3000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      clearTimeout(authTimeout);
       setSession(session);
       setAuthLoading(false);
     });
-    return () => subscription.unsubscribe();
+
+    return () => {
+      clearTimeout(authTimeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSignOut = async () => {
