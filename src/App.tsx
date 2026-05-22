@@ -3,15 +3,13 @@ import jsQR from 'jsqr';
 import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
-  Activity, Layers, Wallet, LogOut, Package, Pencil, Check,
+  Activity, Layers, Wallet, Package, Pencil, Check,
   Sun, Moon, LayoutDashboard,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
-import type { Session } from '@supabase/supabase-js';
 import { Receipt, CATEGORIES } from './types';
 import { supabase } from './supabase';
-import Login from './Login';
 import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
 import DashboardPage from './DashboardPage';
@@ -56,8 +54,6 @@ function useTheme() {
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
 
-  const [session, setSession] = useState<Session | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [search, setSearch] = useState('');
@@ -109,57 +105,6 @@ export default function App() {
   const [dupWarning, setDupWarning] = useState<{ vendor: string; amount: number; date: string | null } | null>(null);
   const dupPendingRef = useRef<(() => Promise<void>) | null>(null);
 
-  useEffect(() => {
-    let authTimeout: ReturnType<typeof setTimeout>;
-    let mounted = true;
-
-    const initAuth = () => {
-      // Set up auth listener FIRST before anything else
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        (_event, session) => {
-          if (!mounted) return;
-          clearTimeout(authTimeout);
-          setSession(session);
-          setAuthLoading(false);
-          if (session) {
-            window.history.replaceState(null, '', window.location.pathname);
-          }
-        }
-      );
-
-      // If no hash, check for an existing cached session immediately
-      if (!window.location.hash.includes('access_token')) {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          if (!mounted) return;
-          if (session) {
-            setSession(session);
-            setAuthLoading(false);
-          }
-        }).catch(() => {});
-      }
-      // If hash IS present, just wait — onAuthStateChange fires automatically
-      // when Supabase's detectSessionInUrl processes the hash token
-
-      authTimeout = setTimeout(() => {
-        if (mounted) setAuthLoading(false);
-      }, 8000);
-
-      return () => subscription.unsubscribe();
-    };
-
-    const cleanup = initAuth();
-
-    return () => {
-      mounted = false;
-      clearTimeout(authTimeout);
-      cleanup();
-    };
-  }, []);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-  };
-
   const fetchReceipts = async () => {
     const { data, error } = await supabase
       .from('receipts')
@@ -209,13 +154,12 @@ export default function App() {
       );
       if (!analyzeResponse.ok) throw new Error('Failed to analyze');
       const data = await analyzeResponse.json();
-      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
       const { error: insertError } = await supabase.from('receipts').insert({
         vendor: data.vendor ?? '', amount: typeof data.amount === 'number' ? data.amount : (parseFloat(data.amount) || 0),
         currency: data.currency ?? 'TZS', date: data.date ?? new Date().toISOString().split('T')[0],
         time: data.time ?? '', category: data.category ?? 'Other', account_type: 'Unknown',
         payment_method: data.payment_method ?? null, notes: data.notes ?? null,
-        status: 'logged', user_id: session?.user.id, submitted_by: submittedBy,
+        status: 'logged', user_id: null, submitted_by: 'Albert John',
       });
       if (!insertError) { await fetchReceipts(); setIsAdding(false); }
     } catch (error) {
@@ -429,14 +373,10 @@ export default function App() {
     console.log('Save button clicked, skipDupCheck:', skipDupCheck, 'ocrFields:', ocrFields);
     if (!ocrFields) return;
 
-    // Use session directly — no async getUser() needed
-    const userId = session?.user.id;
-    const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
-
     if (!skipDupCheck) {
       try {
         const isDup = await Promise.race([
-          checkDuplicate(ocrFields.vendor, parseFloat(ocrFields.amount) || 0, ocrFields.date || null, userId),
+          checkDuplicate(ocrFields.vendor, parseFloat(ocrFields.amount) || 0, ocrFields.date || null, undefined),
           new Promise<boolean>(resolve => setTimeout(() => resolve(false), 4000)),
         ]);
         if (isDup) {
@@ -462,8 +402,8 @@ export default function App() {
         payment_method: ocrFields.payment_method || null,
         notes:          ocrFields.notes || null,
         status:         'complete',
-        user_id:        userId,
-        submitted_by:   submittedBy,
+        user_id:        null,
+        submitted_by:   'Albert John',
       };
       console.log('Saving receipt...', receiptData);
       const { error } = await supabase.from('receipts').insert(receiptData);
@@ -532,7 +472,6 @@ export default function App() {
     if (toSave.length === 0) return;
     setIsSavingAll(true);
     try {
-      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
       const rows = toSave.map(item => ({
         vendor:         item.vendor ?? '',
         amount:         typeof item.amount === 'number' ? item.amount : (parseFloat(String(item.amount)) || 0),
@@ -544,8 +483,8 @@ export default function App() {
         payment_method: item.payment_method ?? null,
         notes:          item.notes ?? null,
         status:         'logged',
-        user_id:        session?.user.id,
-        submitted_by:   submittedBy,
+        user_id:        null,
+        submitted_by:   'Albert John',
       }));
       const { error } = await supabase.from('receipts').insert(rows);
       if (!error) {
@@ -595,9 +534,8 @@ export default function App() {
         results.push({ vendor: '', amount: 0, currency: 'TZS', date: null, category: 'Other', payment_method: null, notes: null, error: true });
       }
     }
-    const userId = session?.user.id;
     const dupChecks = await Promise.all(results.map(r =>
-      r.error ? Promise.resolve(false) : checkDuplicate(r.vendor, r.amount, r.date, userId)
+      r.error ? Promise.resolve(false) : checkDuplicate(r.vendor, r.amount, r.date, undefined)
     ));
     dupChecks.forEach((isDup, i) => { if (isDup) results[i].duplicate = true; });
 
@@ -612,14 +550,12 @@ export default function App() {
     if (toSave.length === 0) return;
     setBulkSaving(true);
     try {
-      const userId = session?.user.id;
-      const submittedBy = (session?.user.user_metadata?.full_name ?? session?.user.email ?? 'User') as string;
       const rows = toSave.map(item => ({
         vendor: item.vendor || '', amount: item.amount || 0, currency: item.currency || 'TZS',
         date: item.date || null, time: '', category: item.category || 'Other',
         account_type: 'Business' as Receipt['account_type'],
         payment_method: item.payment_method || null, notes: item.notes || null,
-        status: 'complete' as Receipt['status'], user_id: userId, submitted_by: submittedBy,
+        status: 'complete' as Receipt['status'], user_id: null, submitted_by: 'Albert John',
       }));
       const { error } = await supabase.from('receipts').insert(rows);
       if (!error) {
@@ -792,19 +728,7 @@ export default function App() {
     return Object.entries(totals).sort((a, b) => b[1] - a[1]);
   }, [filteredReceipts]);
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-brand-bg flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
-      </div>
-    );
-  }
-
-  if (!session) return <Login />;
-
-  const user = session.user;
-  const avatarUrl = user.user_metadata?.avatar_url as string | undefined;
-  const fullName = (user.user_metadata?.full_name ?? user.email ?? 'User') as string;
+  const fullName = 'Albert John';
 
   const NAV_ITEMS: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -870,23 +794,12 @@ export default function App() {
           </button>
 
           <div className="flex items-center gap-3 pl-3 border-l border-brand-border">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt={fullName} referrerPolicy="no-referrer" className="w-8 h-8 rounded-full border border-brand-border object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-brand-card border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent uppercase">
-                {fullName.charAt(0)}
-              </div>
-            )}
+            <div className="w-8 h-8 rounded-full bg-brand-card border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent uppercase">
+              {fullName.charAt(0)}
+            </div>
             <span className="hidden md:block text-[10px] font-mono text-brand-text-muted uppercase tracking-widest max-w-[100px] truncate">
               {fullName}
             </span>
-            <button
-              onClick={handleSignOut}
-              title="Sign out"
-              className="p-2 rounded-lg text-brand-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </div>
       </header>
