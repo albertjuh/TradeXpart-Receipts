@@ -262,3 +262,49 @@
   /* ── Backdrop / modal overlays — keep dark ──────────────────────────────── */
   /* (intentionally not overriding bg-black/80, bg-black/90 so modals stay dark) */
 }
+
+/* ── Receipt capture modal animations ───────────────────────────────────── */
+@keyframes scannerBeam {
+  0%   { top: -4px; opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { top: calc(100% + 4px); opacity: 0; }
+}
+
+@keyframes cameraFlash {
+  0%   { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+@keyframes checkmarkDraw {
+  from { stroke-dashoffset: 28; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes pulseRing {
+  0%   { transform: scale(0.95); opacity: 0.6; }
+  100% { transform: scale(1.6);  opacity: 0; }
+}
+
+@keyframes dashBorderPulse {
+  0%, 100% { border-color: rgba(0,255,102,0.35); }
+  50%       { border-color: rgba(0,255,102,0.7); }
+}
+
+.scanner-beam {
+  position: absolute;
+  left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,255,102,0.95) 50%, transparent 100%);
+  box-shadow: 0 0 12px 3px rgba(0,255,102,0.55);
+  animation: scannerBeam 1.6s cubic-bezier(0.4,0,0.6,1) infinite;
+  pointer-events: none;
+}
+
+.camera-flash {
+  animation: cameraFlash 0.45s ease-out forwards;
+}
+
+.scan-drop-zone-idle {
+  animation: dashBorderPulse 2.5s ease-in-out infinite;
+}

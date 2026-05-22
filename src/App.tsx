@@ -24,6 +24,7 @@ type ParsedItem = {
   category: string;
   payment_method: string | null;
   notes: string | null;
+  account_type?: string;
 };
 
 type ChatPhase = 'account_type' | 'category' | 'shipment' | 'confirm';
@@ -105,6 +106,16 @@ export default function App() {
   const [dupWarning, setDupWarning] = useState<{ vendor: string; amount: number; date: string | null } | null>(null);
   const dupPendingRef = useRef<(() => Promise<void>) | null>(null);
 
+  // Camera state
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraCountdown, setCameraCountdown] = useState<number | null>(null);
+  const [cameraFlash, setCameraFlash] = useState(false);
+  const [scanDragging, setScanDragging] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const detectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const fetchReceipts = async () => {
     const { data, error } = await supabase
       .from('receipts')
@@ -172,6 +183,10 @@ export default function App() {
 
   // ── OCR helpers ───────────────────────────────────────────────────────────
   const resetOcr = () => {
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    if (detectionIntervalRef.current) { clearInterval(detectionIntervalRef.current); detectionIntervalRef.current = null; }
+    if (countdownTimeoutRef.current) { clearTimeout(countdownTimeoutRef.current); countdownTimeoutRef.current = null; }
+    setCameraActive(false); setCameraCountdown(null); setCameraFlash(false); setScanDragging(false);
     setOcrPreview(null);
     setOcrLoading(false);
     setOcrStatus('idle');
@@ -222,9 +237,18 @@ export default function App() {
   };
 
   const initChat = (data: Record<string, string>) => {
+    const detected = data.account_type;
+    const autoDetected = detected === 'Business' || detected === 'Personal';
     setChatExtracted(data);
-    setChatPhase('account_type');
-    setChatMessages([{ role: 'ai', text: 'Is this a Business or Personal expense?' }]);
+    if (autoDetected) {
+      const nextPhase = getNextChatPhase('account_type', data);
+      setChatPhase(nextPhase);
+      const nextMsg = getChatAiMessage(nextPhase, data);
+      setChatMessages([{ role: 'ai', text: `Auto-detected: ${detected} expense. ${nextMsg}` }]);
+    } else {
+      setChatPhase('account_type');
+      setChatMessages([{ role: 'ai', text: 'Is this a Business or Personal expense?' }]);
+    }
     setChatActive(true);
   };
 
@@ -286,12 +310,7 @@ export default function App() {
       reader.readAsDataURL(file);
     });
 
-  const handleOcrScan = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    console.log('OCR scan started', file?.name, file?.type);
-    if (!file) return;
-    e.target.value = '';
-
+  const processOcrFile = async (file: File) => {
     const isPDF = file.type === 'application/pdf';
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -305,12 +324,10 @@ export default function App() {
       const base64 = dataUrl.split(',')[1] ?? dataUrl;
 
       try {
-        // QR code detection for images
         if (!isPDF) {
           const qrData = await detectQR(dataUrl);
           if (qrData) {
             setQrMsg('QR code detected — extracting data...');
-            console.log('QR code found:', qrData);
             const resp = await fetch('/api/parse-receipt-text', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -324,27 +341,23 @@ export default function App() {
                 amount:         String(items[0].amount          ?? ''),
                 currency:       String(items[0].currency        ?? 'TZS'),
                 date:           String(items[0].date            ?? ''),
-                category:       String(items[0].category       ?? 'Other'),
+                category:       String(items[0].category        ?? 'Other'),
                 payment_method: String(items[0].payment_method  ?? ''),
                 notes:          String(items[0].notes           ?? ''),
+                account_type:   String(items[0].account_type    ?? ''),
               });
-            } else {
-              setOcrStatus('error');
-            }
+            } else { setOcrStatus('error'); }
             return;
           }
-          setQrMsg('No QR code found — using image OCR...');
+          setQrMsg(null);
         }
 
-        console.log('Calling API /api/ocr-receipt ...');
         const resp = await fetch('/api/ocr-receipt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64, mimeType: file.type }),
         });
-        console.log('API response status:', resp.status);
         const data = await resp.json();
-        console.log('API response data:', data);
 
         if (resp.ok && !data.error) {
           initChat({
@@ -352,21 +365,127 @@ export default function App() {
             amount:         String(data.amount          ?? ''),
             currency:       String(data.currency        ?? 'TZS'),
             date:           String(data.date            ?? ''),
-            category:       String(data.category       ?? 'Other'),
+            category:       String(data.category        ?? 'Other'),
             payment_method: String(data.payment_method  ?? ''),
             notes:          String(data.notes           ?? ''),
+            account_type:   String(data.account_type    ?? ''),
           });
-        } else {
-          setOcrStatus('error');
-        }
-      } catch (err) {
-        console.log('OCR API call failed:', err);
-        setOcrStatus('error');
-      } finally {
-        setOcrLoading(false);
-      }
+        } else { setOcrStatus('error'); }
+      } catch { setOcrStatus('error'); }
+      finally { setOcrLoading(false); }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleOcrScan = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    processOcrFile(file);
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    if (detectionIntervalRef.current) { clearInterval(detectionIntervalRef.current); detectionIntervalRef.current = null; }
+    if (countdownTimeoutRef.current) { clearTimeout(countdownTimeoutRef.current); countdownTimeoutRef.current = null; }
+    setCameraActive(false);
+    setCameraCountdown(null);
+    setCameraFlash(false);
+  };
+
+  const captureFrame = (): string | null => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0);
+    return canvas.toDataURL('image/jpeg', 0.85).split(',')[1] ?? null;
+  };
+
+  const checkDocumentPresent = (): boolean => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0) return false;
+    const canvas = document.createElement('canvas');
+    const W = 320, H = 240;
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+    ctx.drawImage(video, 0, 0, W, H);
+    const x0 = Math.floor(W * 0.2), y0 = Math.floor(H * 0.2);
+    const cw = Math.floor(W * 0.6), ch = Math.floor(H * 0.6);
+    const { data } = ctx.getImageData(x0, y0, cw, ch);
+    let sum = 0, sumSq = 0, n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const g = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      sum += g; sumSq += g * g; n++;
+    }
+    const mean = sum / n;
+    return (sumSq / n - mean * mean) > 800;
+  };
+
+  const handleCameraCapture = async () => {
+    const base64 = captureFrame();
+    stopCamera();
+    if (!base64) return;
+    setOcrLoading(true);
+    setOcrStatus('idle');
+    try {
+      const resp = await fetch('/api/ocr-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base64, mimeType: 'image/jpeg' }),
+      });
+      const data = await resp.json();
+      if (resp.ok && !data.error) {
+        initChat({
+          vendor:         String(data.vendor         ?? ''),
+          amount:         String(data.amount          ?? ''),
+          currency:       String(data.currency        ?? 'TZS'),
+          date:           String(data.date            ?? ''),
+          category:       String(data.category        ?? 'Other'),
+          payment_method: String(data.payment_method  ?? ''),
+          notes:          String(data.notes           ?? ''),
+          account_type:   String(data.account_type    ?? ''),
+        });
+      } else { setOcrStatus('error'); }
+    } catch { setOcrStatus('error'); }
+    finally { setOcrLoading(false); }
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      setCameraActive(true);
+
+      let counting = false;
+      detectionIntervalRef.current = setInterval(() => {
+        if (counting) return;
+        if (checkDocumentPresent()) {
+          counting = true;
+          setCameraFlash(true);
+          setTimeout(() => setCameraFlash(false), 450);
+          const tick = (n: number) => {
+            setCameraCountdown(n);
+            if (n <= 0) {
+              setCameraCountdown(null);
+              handleCameraCapture();
+              counting = false;
+              return;
+            }
+            countdownTimeoutRef.current = setTimeout(() => tick(n - 1), 1000);
+          };
+          tick(3);
+        }
+      }, 500);
+    } catch (err) {
+      console.error('Camera error:', err);
+    }
   };
 
   const handleOcrSubmit = async (skipDupCheck = false) => {
@@ -449,9 +568,10 @@ export default function App() {
           amount:         String(item.amount          ?? ''),
           currency:       String(item.currency        ?? 'TZS'),
           date:           String(item.date            ?? ''),
-          category:       String(item.category       ?? 'Other'),
+          category:       String(item.category        ?? 'Other'),
           payment_method: String(item.payment_method  ?? ''),
           notes:          String(item.notes           ?? ''),
+          account_type:   String(item.account_type    ?? ''),
         });
       } else if (resp.ok && items.length > 1) {
         setParsedItems(items);
@@ -695,6 +815,22 @@ export default function App() {
     supabase.from('shipments').select('id, commodity, reference_number, type')
       .then(({ data }) => setModalShipments((data ?? []) as ModalShipment[]));
   }, [isAdding]);
+
+  useEffect(() => {
+    if (!isAdding) {
+      if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+      if (detectionIntervalRef.current) { clearInterval(detectionIntervalRef.current); detectionIntervalRef.current = null; }
+      if (countdownTimeoutRef.current) { clearTimeout(countdownTimeoutRef.current); countdownTimeoutRef.current = null; }
+      setCameraActive(false); setCameraCountdown(null); setCameraFlash(false);
+    }
+  }, [isAdding]);
+
+  useEffect(() => {
+    if (cameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [cameraActive]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1108,9 +1244,10 @@ export default function App() {
               className="absolute inset-0 bg-black/80 backdrop-blur-md"
             />
             <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              initial={{ opacity: 0, y: 56 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 320 }}
               className="relative glass w-full max-w-md rounded-[2.5rem] p-8 md:p-10 shadow-2xl overflow-y-auto max-h-[90vh]"
             >
               <div className="flex justify-between items-center mb-8">
@@ -1143,20 +1280,38 @@ export default function App() {
 
               /* ── AI loading spinner ── */
               ) : ocrLoading ? (
-                <div className="py-12 flex flex-col items-center justify-center space-y-4">
-                  {ocrPreview && (
-                    <img src={ocrPreview} alt="Receipt preview" className="w-24 h-24 object-cover rounded-xl border border-brand-border mb-2 opacity-60" />
+                <div className="py-8 flex flex-col items-center justify-center space-y-5">
+                  {ocrPreview ? (
+                    <div className="relative w-40 h-48 rounded-2xl overflow-hidden border border-brand-accent/30 shadow-[0_0_20px_rgba(0,255,102,0.12)]">
+                      <img src={ocrPreview} alt="Receipt preview" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/20" />
+                      <div className="scanner-beam" />
+                    </div>
+                  ) : (
+                    <div className="relative w-16 h-16 rounded-2xl bg-brand-card border border-brand-accent/30 flex items-center justify-center">
+                      <Loader2 className="w-7 h-7 text-brand-accent animate-spin" />
+                    </div>
                   )}
-                  <Loader2 className="w-8 h-8 text-brand-accent animate-spin" />
-                  <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
-                    {qrMsg ?? 'Extracting receipt data...'}
+                  <div className="text-center space-y-1">
+                    <div className="text-sm font-bold font-mono uppercase tracking-tight text-brand-accent">
+                      {qrMsg ?? 'Analyzing receipt...'}
+                    </div>
+                    <div className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest">
+                      Claude AI is extracting fields
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="w-1.5 h-1.5 bg-brand-accent rounded-full animate-bounce"
+                           style={{ animationDelay: `${i * 0.15}s` }} />
+                    ))}
                   </div>
                   <button
                     onClick={() => {
                       setOcrLoading(false);
                       setOcrFields({ vendor: '', amount: '', currency: 'TZS', date: '', category: 'Other', payment_method: '', notes: '', account_type: 'Business' });
                     }}
-                    className="text-[9px] font-mono text-brand-text-muted/50 uppercase tracking-widest hover:text-brand-text-muted transition-colors py-1 mt-2">
+                    className="text-[9px] font-mono text-brand-text-muted/50 uppercase tracking-widest hover:text-brand-text-muted transition-colors">
                     Enter manually →
                   </button>
                 </div>
@@ -1197,17 +1352,30 @@ export default function App() {
                 <div className="space-y-4">
                   {/* Summary card */}
                   {chatExtracted && (
-                    <div className="flex items-center justify-between p-3 rounded-xl border border-brand-accent/40 bg-brand-accent/5">
-                      <div>
-                        <div className="text-xs font-bold font-mono uppercase tracking-tight">{chatExtracted.vendor || 'Receipt'}</div>
-                        <div className="text-[9px] font-mono text-brand-text-muted mt-0.5">{chatExtracted.date || '—'}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold font-mono text-brand-accent">
-                          {chatExtracted.currency || 'TZS'} {(parseFloat(chatExtracted.amount) || 0).toLocaleString()}
+                    <div className="p-3 rounded-xl border border-brand-accent/40 bg-brand-accent/5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold font-mono uppercase tracking-tight">{chatExtracted.vendor || 'Receipt'}</div>
+                          <div className="text-[9px] font-mono text-brand-text-muted mt-0.5">{chatExtracted.date || '—'}</div>
                         </div>
-                        <div className="text-[9px] font-mono text-brand-text-muted uppercase">{chatExtracted.category}</div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold font-mono text-brand-accent">
+                            {chatExtracted.currency || 'TZS'} {(parseFloat(chatExtracted.amount) || 0).toLocaleString()}
+                          </div>
+                          <div className="text-[9px] font-mono text-brand-text-muted uppercase">{chatExtracted.category}</div>
+                        </div>
                       </div>
+                      {(chatExtracted.account_type === 'Business' || chatExtracted.account_type === 'Personal') && (
+                        <div className="flex">
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase border ${
+                            chatExtracted.account_type === 'Business'
+                              ? 'bg-brand-accent/10 text-brand-accent border-brand-accent/30'
+                              : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                          }`}>
+                            ✦ {chatExtracted.account_type}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1292,7 +1460,12 @@ export default function App() {
                       )}
                       <div>
                         <div className="flex items-center gap-1.5 text-brand-accent">
-                          <Check className="w-3.5 h-3.5" />
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+                            <path d="M3 8.5L6.5 12L13 5" stroke="currentColor" strokeWidth="2"
+                              strokeLinecap="round" strokeLinejoin="round"
+                              strokeDasharray="28" strokeDashoffset="28"
+                              style={{ animation: 'checkmarkDraw 0.45s ease-out 0.05s forwards' }} />
+                          </svg>
                           <span className="text-[10px] font-mono font-bold uppercase tracking-widest">Receipt scanned — please review</span>
                         </div>
                         <p className="text-[9px] font-mono text-brand-text-muted mt-1">Edit any fields then save.</p>
@@ -1451,7 +1624,7 @@ export default function App() {
                     {(['scan', 'type', 'bulk'] as const).map(tab => (
                       <button
                         key={tab}
-                        onClick={() => { setModalTab(tab); setOcrStatus('idle'); setBulkDragging(false); }}
+                        onClick={() => { setModalTab(tab); setOcrStatus('idle'); setBulkDragging(false); setScanDragging(false); if (cameraActive) stopCamera(); }}
                         className={`flex-1 py-2 rounded-lg text-[10px] font-mono uppercase tracking-widest transition-all ${
                           modalTab === tab ? 'bg-brand-accent text-black font-bold' : 'text-brand-text-muted hover:text-white'
                         }`}
@@ -1461,30 +1634,168 @@ export default function App() {
                     ))}
                   </div>
 
+                  <AnimatePresence mode="wait">
                   {/* SCAN tab */}
                   {modalTab === 'scan' && (
-                    <div className="space-y-4">
-                      <label className="flex items-center justify-center gap-4 w-full py-7 border-2 border-brand-accent/40 rounded-2xl cursor-pointer hover:bg-brand-accent/5 hover:border-brand-accent transition-all group">
-                        <div className="w-10 h-10 bg-brand-accent/10 rounded-xl flex items-center justify-center group-hover:bg-brand-accent/20 transition-all flex-shrink-0">
-                          <Camera className="w-5 h-5 text-brand-accent" />
+                    <motion.div
+                      key="scan-tab"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="space-y-4"
+                    >
+                      {cameraActive ? (
+                        /* ── Live camera view ── */
+                        <div className="space-y-3">
+                          <div className="relative rounded-2xl overflow-hidden bg-black border border-brand-border"
+                               style={{ aspectRatio: '4/3' }}>
+                            <video
+                              ref={videoRef}
+                              className="w-full h-full object-cover"
+                              playsInline
+                              muted
+                              autoPlay
+                            />
+                            {/* Receipt guide frame */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="w-[72%] h-[75%] rounded-2xl border-2 border-brand-accent"
+                                   style={{ boxShadow: '0 0 0 9999px rgba(0,0,0,0.45), 0 0 20px rgba(0,255,102,0.25) inset' }} />
+                            </div>
+                            {/* Detection flash */}
+                            {cameraFlash && (
+                              <div className="absolute inset-0 bg-brand-accent/25 camera-flash pointer-events-none" />
+                            )}
+                            {/* Countdown */}
+                            {cameraCountdown !== null && (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                                <div className="px-4 py-1.5 bg-brand-accent text-black rounded-full text-[10px] font-bold font-mono uppercase tracking-widest">
+                                  Receipt detected!
+                                </div>
+                                <div className="text-6xl font-bold text-white font-mono tabular-nums"
+                                     style={{ textShadow: '0 0 30px rgba(0,255,102,0.5)' }}>
+                                  {cameraCountdown}
+                                </div>
+                              </div>
+                            )}
+                            {/* Corner markers */}
+                            <div className="absolute top-[12.5%] left-[14%] w-4 h-4 border-t-2 border-l-2 border-brand-accent rounded-tl pointer-events-none" />
+                            <div className="absolute top-[12.5%] right-[14%] w-4 h-4 border-t-2 border-r-2 border-brand-accent rounded-tr pointer-events-none" />
+                            <div className="absolute bottom-[12.5%] left-[14%] w-4 h-4 border-b-2 border-l-2 border-brand-accent rounded-bl pointer-events-none" />
+                            <div className="absolute bottom-[12.5%] right-[14%] w-4 h-4 border-b-2 border-r-2 border-brand-accent rounded-br pointer-events-none" />
+                          </div>
+                          <p className="text-center text-[9px] font-mono text-brand-text-muted uppercase tracking-widest">
+                            Align receipt within the frame — auto-detects when ready
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleCameraCapture}
+                              className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              Capture Now
+                            </button>
+                            <button
+                              onClick={stopCamera}
+                              className="px-5 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-bold uppercase tracking-tight text-brand-accent">Scan Receipt</p>
-                          <p className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest mt-0.5">Photo, JPEG, PNG or PDF · Claude AI extracts fields</p>
+                      ) : (
+                        /* ── Upload UI ── */
+                        <div className="space-y-4">
+                          {/* Header with pulsing camera icon */}
+                          <div className="text-center space-y-3 pt-1">
+                            <div className="relative w-[72px] h-[72px] mx-auto">
+                              <div className="absolute inset-0 rounded-full border-2 border-brand-accent/40"
+                                   style={{ animation: 'pulseRing 2s ease-out infinite' }} />
+                              <div className="absolute inset-0 rounded-full border border-brand-accent/20"
+                                   style={{ animation: 'pulseRing 2s ease-out 0.6s infinite' }} />
+                              <div className="relative w-full h-full rounded-full bg-brand-card border border-brand-accent/50 flex items-center justify-center shadow-[0_0_24px_rgba(0,255,102,0.18)]">
+                                <Camera className="w-7 h-7 text-brand-accent" />
+                              </div>
+                            </div>
+                            <div>
+                              <h3 className="text-lg font-bold font-mono uppercase tracking-tight">SCAN RECEIPT</h3>
+                              <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-1">
+                                AI extracts all fields automatically
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Drag & drop zone */}
+                          <div
+                            onDragOver={(e) => { e.preventDefault(); setScanDragging(true); }}
+                            onDragLeave={() => setScanDragging(false)}
+                            onDrop={(e) => {
+                              e.preventDefault(); setScanDragging(false);
+                              const file = e.dataTransfer.files?.[0];
+                              if (file) processOcrFile(file);
+                            }}
+                            className={`relative border-2 rounded-2xl p-5 text-center transition-all duration-200 ${
+                              scanDragging
+                                ? 'border-brand-accent bg-brand-accent/8 shadow-[0_0_24px_rgba(0,255,102,0.2)]'
+                                : 'border-dashed border-brand-border/70 hover:border-brand-accent/60 hover:shadow-[0_0_16px_rgba(0,255,102,0.08)] scan-drop-zone-idle'
+                            }`}
+                          >
+                            <label className="flex flex-col items-center gap-2.5 cursor-pointer">
+                              <p className="text-[11px] font-mono text-brand-text-muted leading-relaxed">
+                                Drop receipt here or{' '}
+                                <span className="text-brand-accent font-bold">click to browse</span>
+                              </p>
+                              <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                                {['JPEG', 'PNG', 'PDF', 'HEIC'].map(t => (
+                                  <span key={t} className="px-2 py-0.5 rounded text-[8px] font-mono border border-brand-border/60 text-brand-text-muted/70 uppercase tracking-wider">
+                                    {t}
+                                  </span>
+                                ))}
+                              </div>
+                              <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleOcrScan} />
+                            </label>
+                          </div>
+
+                          {/* Divider */}
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-px bg-brand-border/50" />
+                            <span className="text-[9px] font-mono text-brand-text-muted uppercase tracking-widest">or</span>
+                            <div className="flex-1 h-px bg-brand-border/50" />
+                          </div>
+
+                          {/* Camera button */}
+                          <button
+                            onClick={startCamera}
+                            className="w-full py-3 rounded-2xl border border-brand-accent/40 text-brand-accent font-mono text-[10px] uppercase tracking-widest hover:bg-brand-accent hover:text-black transition-all flex items-center justify-center gap-2 group"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            Use Camera
+                          </button>
+
+                          {ocrStatus === 'error' && (
+                            <motion.p
+                              initial={{ opacity: 0, y: -4 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="text-center text-[9px] font-mono text-red-400 uppercase tracking-widest"
+                            >
+                              Could not read receipt — try again or switch to Type mode
+                            </motion.p>
+                          )}
                         </div>
-                        <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleOcrScan} />
-                      </label>
-                      {ocrStatus === 'error' && (
-                        <p className="text-center text-[9px] font-mono text-red-400 uppercase tracking-widest">
-                          Could not read receipt — try again or switch to Type mode
-                        </p>
                       )}
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* TYPE tab */}
                   {modalTab === 'type' && (
-                    <div className="space-y-4">
+                    <motion.div
+                      key="type-tab"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="space-y-4"
+                    >
                       <textarea
                         value={typeText}
                         onChange={e => setTypeText(e.target.value)}
@@ -1504,12 +1815,19 @@ export default function App() {
                           Could not parse — try rephrasing or adding more detail
                         </p>
                       )}
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* BULK tab */}
                   {modalTab === 'bulk' && (
-                    <div className="space-y-3">
+                    <motion.div
+                      key="bulk-tab"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="space-y-3"
+                    >
                       {/* Drop zone */}
                       {!bulkSuccess && (
                         <div
@@ -1675,8 +1993,9 @@ export default function App() {
                           <div className="text-brand-accent font-bold font-mono text-sm uppercase tracking-tight text-center">{bulkSuccess}</div>
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   )}
+                  </AnimatePresence>
                 </div>
               )}
             </motion.div>
