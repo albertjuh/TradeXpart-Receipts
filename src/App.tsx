@@ -112,17 +112,9 @@ export default function App() {
   useEffect(() => {
     let authTimeout: ReturnType<typeof setTimeout>;
 
-    // Fast path: use cached session immediately (avoids spinner on return visits)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setSession(session);
-        setAuthLoading(false);
-      }
-    }).catch(() => {});
-
-    // Auth state listener — handles OAuth redirect (SIGNED_IN) and normal restore (INITIAL_SESSION)
+    // Auth state listener — handles SIGNED_IN (OAuth redirect) and INITIAL_SESSION (page reload)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         clearTimeout(authTimeout);
         if (session?.user) {
           setSession(session);
@@ -133,10 +125,30 @@ export default function App() {
       }
     );
 
-    // Safety timeout — never get stuck on the spinner if auth never fires
+    // Fast path: use cached session immediately (avoids spinner on return visits)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setSession(session);
+        setAuthLoading(false);
+      }
+    }).catch(() => {});
+
+    // Explicit hash detection — Supabase should auto-detect via detectSessionInUrl,
+    // but this is a belt-and-suspenders fallback for the OAuth redirect case
+    if (window.location.hash.includes('access_token')) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          setSession(session);
+          setAuthLoading(false);
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      }).catch(() => {});
+    }
+
+    // Safety timeout — never get stuck on the spinner
     authTimeout = setTimeout(() => {
       setAuthLoading(false);
-    }, 5000);
+    }, 8000);
 
     return () => {
       clearTimeout(authTimeout);

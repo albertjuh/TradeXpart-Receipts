@@ -3,7 +3,13 @@ import { createClient } from "@supabase/supabase-js"
 const supabaseUrl = "https://bdnwexluvzbwawypkiqp.supabase.co"
 const supabaseKey = "sb_publishable_ZLYAlvfSLZvFz0XwTClTnQ_jmaHeRyn"
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+})
 
 export const uploadFile = async (bucket: string, path: string, file: File) => {
   const { data, error } = await supabase.storage
