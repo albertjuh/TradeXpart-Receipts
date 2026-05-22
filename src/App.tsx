@@ -4,7 +4,7 @@ import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
   Activity, Layers, Wallet, Package, Pencil, Check,
-  Sun, Moon, LayoutDashboard,
+  Sun, Moon, LayoutDashboard, Download,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -13,6 +13,7 @@ import { supabase } from './supabase';
 import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
 import DashboardPage from './DashboardPage';
+import ExportModal from './components/ExportModal';
 
 type Page = 'dashboard' | 'receipts' | 'shipments';
 
@@ -56,6 +57,7 @@ export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
 
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [receiptsError, setReceiptsError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState<string | 'All'>('All');
@@ -67,6 +69,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [openShipmentModal, setOpenShipmentModal] = useState(false);
   const [selectedShipmentId, setSelectedShipmentId] = useState<string | null>(null);
+  const [showExport, setShowExport] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Receipt>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -119,10 +122,12 @@ export default function App() {
   const fetchReceipts = async () => {
     try {
       console.log('Fetching receipts...');
-      const { data, error } = await supabase
-        .from('receipts')
-        .select('*')
-        .order('created_at', { ascending: false });
+      setReceiptsError(null);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Query timeout after 5s')), 5000)
+      );
+      const query = supabase.from('receipts').select('*').order('created_at', { ascending: false });
+      const { data, error } = await Promise.race([query, timeout]) as Awaited<typeof query>;
       console.log('Receipts result:', data, error);
       if (error) throw error;
       setReceipts((data ?? []).map((row) => ({
@@ -139,12 +144,25 @@ export default function App() {
         status: (row.status ?? 'logged') as Receipt['status'],
         notes: row.notes ?? undefined,
       })));
-    } catch (e) {
-      console.error('fetchReceipts error:', e);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('fetchReceipts FAILED:', msg);
+      setReceiptsError(msg);
+    }
+  };
+
+  const testConnection = async () => {
+    try {
+      const { error } = await supabase.from('receipts').select('count').limit(1);
+      if (error) console.error('Supabase connection test FAILED:', error.message, error.code);
+      else console.log('Supabase connection test PASSED');
+    } catch (e: unknown) {
+      console.error('Supabase connection test ERROR:', e instanceof Error ? e.message : e);
     }
   };
 
   useEffect(() => {
+    testConnection();
     fetchReceipts();
   }, []);
 
@@ -941,6 +959,14 @@ export default function App() {
           </div>
 
 <button
+            onClick={() => setShowExport(true)}
+            className="hidden md:flex border border-brand-border text-brand-text-muted px-4 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:border-brand-accent/40 hover:text-brand-accent transition-all active:scale-95"
+          >
+            <Download className="w-4 h-4" />
+            EXPORT
+          </button>
+
+          <button
             onClick={() => setIsAdding(true)}
             className="hidden md:flex bg-brand-accent text-black px-5 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
           >
@@ -989,6 +1015,18 @@ export default function App() {
 
       {currentPage === 'receipts' && (
         <main className="w-full max-w-4xl mx-auto px-6 pt-10 pb-28 md:pb-10 space-y-10 overflow-x-hidden box-border">
+          {/* Receipts error banner */}
+          {receiptsError && (
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl border border-red-500/40 bg-red-500/8 text-red-400">
+              <span className="text-[11px] font-mono">⚠ Could not load receipts: {receiptsError}</span>
+              <button
+                onClick={fetchReceipts}
+                className="flex-shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border border-red-500/40 hover:bg-red-500/20 transition-all"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {/* Bento Grid Summary */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <motion.div
@@ -2320,6 +2358,14 @@ export default function App() {
           </button>
         </div>
       </nav>
+
+      {showExport && (
+        <ExportModal
+          receiptCount={receipts.length}
+          shipmentCount={0}
+          onClose={() => setShowExport(false)}
+        />
+      )}
     </div>
   );
 }

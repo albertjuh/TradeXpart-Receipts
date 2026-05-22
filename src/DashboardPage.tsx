@@ -63,20 +63,31 @@ export default function DashboardPage({
 }: Props) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [loadingShipments, setLoadingShipments] = useState(true);
+  const [shipmentsError, setShipmentsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    console.log('Fetching shipments...');
-    supabase
-      .from('shipments')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20)
-      .then(({ data, error }) => {
-        console.log('Shipments result:', data, error);
-        if (!error && data) setShipments(data as Shipment[]);
-        setLoadingShipments(false);
-      });
-  }, []);
+  const fetchShipments = async () => {
+    try {
+      console.log('Fetching shipments...');
+      setShipmentsError(null);
+      setLoadingShipments(true);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Query timeout after 5s')), 5000)
+      );
+      const query = supabase.from('shipments').select('*').order('created_at', { ascending: false }).limit(20);
+      const { data, error } = await Promise.race([query, timeout]) as Awaited<typeof query>;
+      console.log('Shipments result:', data, error);
+      if (error) throw error;
+      setShipments(data as Shipment[]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('fetchShipments FAILED:', msg);
+      setShipmentsError(msg);
+    } finally {
+      setLoadingShipments(false);
+    }
+  };
+
+  useEffect(() => { fetchShipments(); }, []);
 
   const activeShipments = shipments.filter(s => ACTIVE_STATUSES.has(s.status));
   const pendingReceipts = receipts.filter(r => r.status === 'pending').length;
@@ -245,7 +256,17 @@ export default function DashboardPage({
                 All <ArrowRight className="w-3 h-3" />
               </button>
             </div>
-            {loadingShipments ? (
+            {shipmentsError ? (
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-red-500/40 bg-red-500/8 text-red-400">
+                <span className="text-[10px] font-mono">⚠ {shipmentsError}</span>
+                <button
+                  onClick={fetchShipments}
+                  className="flex-shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg border border-red-500/40 hover:bg-red-500/20 transition-all"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : loadingShipments ? (
               <div className="py-6 flex justify-center">
                 <Loader2 className="w-4 h-4 text-brand-accent animate-spin" />
               </div>

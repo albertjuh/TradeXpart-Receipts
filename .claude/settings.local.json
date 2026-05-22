@@ -13,7 +13,9 @@
       "Bash(Remove-Item api\\\\ocr-receipt.ts)",
       "Bash(Remove-Item api\\\\parse-receipt-text.ts)",
       "Bash(Write-Host \"Deleted .ts files\")",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(dir /a .env*)",
+      "Bash(node -e \"require\\('xlsx'\\); console.log\\('xlsx ok'\\)\")"
     ]
   }
 }
