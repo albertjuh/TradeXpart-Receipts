@@ -265,7 +265,7 @@ export default function App() {
 
   const handleChatAnswer = (answer: string) => {
     setChatMessages(prev => [...prev, { role: 'user', text: answer }]);
-    const patch =
+    const patch: Record<string, string> =
       chatPhase === 'account_type' ? { account_type: answer } :
       chatPhase === 'category'     ? { category: answer }     :
       chatPhase === 'shipment'     ? { shipment_link: answer } : {};
