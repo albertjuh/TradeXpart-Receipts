@@ -112,27 +112,13 @@ export default function App() {
   useEffect(() => {
     let authTimeout: ReturnType<typeof setTimeout>;
     let mounted = true;
-    let subscriptionCleanup: (() => void) | undefined;
 
-    const initAuth = async () => {
-      // If OAuth hash is present, give Supabase time to process it before calling getSession
-      if (window.location.hash.includes('access_token')) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (mounted && session?.user) {
-        setSession(session);
-        setAuthLoading(false);
-        window.history.replaceState(null, '', window.location.pathname);
-        return;
-      }
-
-      // No cached session — listen for auth state (covers OAuth SIGNED_IN event)
+    const initAuth = () => {
+      // Set up auth listener FIRST before anything else
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         (_event, session) => {
-          clearTimeout(authTimeout);
           if (!mounted) return;
+          clearTimeout(authTimeout);
           setSession(session);
           setAuthLoading(false);
           if (session) {
@@ -140,19 +126,33 @@ export default function App() {
           }
         }
       );
-      subscriptionCleanup = () => subscription.unsubscribe();
+
+      // If no hash, check for an existing cached session immediately
+      if (!window.location.hash.includes('access_token')) {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (!mounted) return;
+          if (session) {
+            setSession(session);
+            setAuthLoading(false);
+          }
+        }).catch(() => {});
+      }
+      // If hash IS present, just wait — onAuthStateChange fires automatically
+      // when Supabase's detectSessionInUrl processes the hash token
 
       authTimeout = setTimeout(() => {
         if (mounted) setAuthLoading(false);
       }, 8000);
+
+      return () => subscription.unsubscribe();
     };
 
-    initAuth();
+    const cleanup = initAuth();
 
     return () => {
       mounted = false;
       clearTimeout(authTimeout);
-      subscriptionCleanup?.();
+      cleanup();
     };
   }, []);
 
