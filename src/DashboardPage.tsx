@@ -65,12 +65,14 @@ export default function DashboardPage({
   const [loadingShipments, setLoadingShipments] = useState(true);
 
   useEffect(() => {
+    console.log('Fetching shipments...');
     supabase
       .from('shipments')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(20)
       .then(({ data, error }) => {
+        console.log('Shipments result:', data, error);
         if (!error && data) setShipments(data as Shipment[]);
         setLoadingShipments(false);
       });

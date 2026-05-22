@@ -62,8 +62,6 @@ export default function CreateShipmentModal({ onClose, onCreated }: Props) {
     setSubmitting(true);
     setError(null);
 
-    const { data: { user } } = await supabase.auth.getUser();
-
     const payload = {
       type: form.type,
       status: form.status,
@@ -79,7 +77,7 @@ export default function CreateShipmentModal({ onClose, onCreated }: Props) {
       container_number: form.container_number.trim() || null,
       hs_code: form.hs_code.trim() || null,
       notes: form.notes.trim() || null,
-      created_by: user?.id ?? null,
+      created_by: null,
     };
 
     const { error: dbError } = await supabase.from('shipments').insert(payload);

@@ -117,10 +117,12 @@ export default function App() {
   const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchReceipts = async () => {
+    console.log('Fetching receipts...');
     const { data, error } = await supabase
       .from('receipts')
       .select('*')
       .order('created_at', { ascending: false });
+    console.log('Receipts result:', data, error);
     if (error) { console.error('Failed to fetch receipts:', error); return; }
     setReceipts((data ?? []).map((row) => ({
       id: row.id ?? '',
