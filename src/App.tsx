@@ -111,48 +111,48 @@ export default function App() {
 
   useEffect(() => {
     let authTimeout: ReturnType<typeof setTimeout>;
+    let mounted = true;
+    let subscriptionCleanup: (() => void) | undefined;
 
-    // Auth state listener — handles SIGNED_IN (OAuth redirect) and INITIAL_SESSION (page reload)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        clearTimeout(authTimeout);
-        if (session?.user) {
-          setSession(session);
-        } else {
-          setSession(null);
-        }
-        setAuthLoading(false);
+    const initAuth = async () => {
+      // If OAuth hash is present, give Supabase time to process it before calling getSession
+      if (window.location.hash.includes('access_token')) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    );
 
-    // Fast path: use cached session immediately (avoids spinner on return visits)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (mounted && session?.user) {
         setSession(session);
         setAuthLoading(false);
+        window.history.replaceState(null, '', window.location.pathname);
+        return;
       }
-    }).catch(() => {});
 
-    // Explicit hash detection — Supabase should auto-detect via detectSessionInUrl,
-    // but this is a belt-and-suspenders fallback for the OAuth redirect case
-    if (window.location.hash.includes('access_token')) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
+      // No cached session — listen for auth state (covers OAuth SIGNED_IN event)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        (_event, session) => {
+          clearTimeout(authTimeout);
+          if (!mounted) return;
           setSession(session);
           setAuthLoading(false);
-          window.history.replaceState(null, '', window.location.pathname);
+          if (session) {
+            window.history.replaceState(null, '', window.location.pathname);
+          }
         }
-      }).catch(() => {});
-    }
+      );
+      subscriptionCleanup = () => subscription.unsubscribe();
 
-    // Safety timeout — never get stuck on the spinner
-    authTimeout = setTimeout(() => {
-      setAuthLoading(false);
-    }, 8000);
+      authTimeout = setTimeout(() => {
+        if (mounted) setAuthLoading(false);
+      }, 8000);
+    };
+
+    initAuth();
 
     return () => {
+      mounted = false;
       clearTimeout(authTimeout);
-      subscription.unsubscribe();
+      subscriptionCleanup?.();
     };
   }, []);
 
