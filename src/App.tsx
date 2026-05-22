@@ -110,24 +110,33 @@ export default function App() {
   const dupPendingRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
-    // Resolve immediately if session is already cached locally
+    let authTimeout: ReturnType<typeof setTimeout>;
+
+    // Fast path: use cached session immediately (avoids spinner on return visits)
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+      if (session?.user) {
         setSession(session);
         setAuthLoading(false);
       }
-    }).catch(() => {
-      // Network error — onAuthStateChange or the timeout will resolve this
-    });
+    }).catch(() => {});
 
-    // Safety net: never leave the app stuck on the spinner
-    const authTimeout = setTimeout(() => setAuthLoading(false), 3000);
+    // Auth state listener — handles OAuth redirect (SIGNED_IN) and normal restore (INITIAL_SESSION)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        clearTimeout(authTimeout);
+        if (session?.user) {
+          setSession(session);
+        } else {
+          setSession(null);
+        }
+        setAuthLoading(false);
+      }
+    );
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      clearTimeout(authTimeout);
-      setSession(session);
+    // Safety timeout — never get stuck on the spinner if auth never fires
+    authTimeout = setTimeout(() => {
       setAuthLoading(false);
-    });
+    }, 5000);
 
     return () => {
       clearTimeout(authTimeout);
