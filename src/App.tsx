@@ -711,10 +711,10 @@ export default function App() {
     setModalTab('bulk');
   };
 
-  const checkDuplicate = async (vendor: string, amount: number, date: string | null, userId: string | undefined): Promise<boolean> => {
+  const checkDuplicate = async (vendor: string, amount: number, date: string | null, _userId?: string): Promise<boolean> => {
     if (!vendor || !amount) return false;
     try {
-      let q = supabase.from('receipts').select('id', { count: 'exact', head: true }).eq('user_id', userId ?? '').eq('vendor', vendor).eq('amount', amount);
+      let q = supabase.from('receipts').select('id', { count: 'exact', head: true }).eq('vendor', vendor).eq('amount', amount);
       if (date) q = q.eq('date', date);
       const { count } = await q;
       return (count ?? 0) > 0;
