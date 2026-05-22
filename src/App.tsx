@@ -117,27 +117,31 @@ export default function App() {
   const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchReceipts = async () => {
-    console.log('Fetching receipts...');
-    const { data, error } = await supabase
-      .from('receipts')
-      .select('*')
-      .order('created_at', { ascending: false });
-    console.log('Receipts result:', data, error);
-    if (error) { console.error('Failed to fetch receipts:', error); return; }
-    setReceipts((data ?? []).map((row) => ({
-      id: row.id ?? '',
-      date: row.date ?? '',
-      time: row.time ?? '',
-      vendor: row.vendor ?? '',
-      amount: typeof row.amount === 'number' ? row.amount : (parseFloat(row.amount) || 0),
-      currency: row.currency ?? 'TSh',
-      category: row.category ?? 'Other',
-      account_type: (row.account_type ?? 'Unknown') as Receipt['account_type'],
-      payment_method: row.payment_method ?? undefined,
-      submitted_by: row.submitted_by ?? undefined,
-      status: (row.status ?? 'logged') as Receipt['status'],
-      notes: row.notes ?? undefined,
-    })));
+    try {
+      console.log('Fetching receipts...');
+      const { data, error } = await supabase
+        .from('receipts')
+        .select('*')
+        .order('created_at', { ascending: false });
+      console.log('Receipts result:', data, error);
+      if (error) throw error;
+      setReceipts((data ?? []).map((row) => ({
+        id: row.id ?? '',
+        date: row.date ?? '',
+        time: row.time ?? '',
+        vendor: row.vendor ?? '',
+        amount: typeof row.amount === 'number' ? row.amount : (parseFloat(row.amount) || 0),
+        currency: row.currency ?? 'TSh',
+        category: row.category ?? 'Other',
+        account_type: (row.account_type ?? 'Unknown') as Receipt['account_type'],
+        payment_method: row.payment_method ?? undefined,
+        submitted_by: row.submitted_by ?? undefined,
+        status: (row.status ?? 'logged') as Receipt['status'],
+        notes: row.notes ?? undefined,
+      })));
+    } catch (e) {
+      console.error('fetchReceipts error:', e);
+    }
   };
 
   useEffect(() => {
@@ -512,8 +516,21 @@ export default function App() {
 
     setIsProcessing(true);
     try {
-      const receiptData = {
-        vendor:         ocrFields.vendor,
+      const receiptData: {
+        vendor: string | null;
+        amount: number;
+        currency: string;
+        date: string | null;
+        time: string;
+        category: string;
+        account_type: Receipt['account_type'];
+        payment_method: string | null;
+        notes: string | null;
+        status: string;
+        user_id: null;
+        submitted_by: string;
+      } = {
+        vendor:         ocrFields.vendor || null,
         amount:         parseFloat(ocrFields.amount) || 0,
         currency:       ocrFields.currency || 'TZS',
         date:           ocrFields.date || null,
@@ -527,8 +544,8 @@ export default function App() {
         submitted_by:   'Albert John',
       };
       console.log('Saving receipt...', receiptData);
-      const { error } = await supabase.from('receipts').insert(receiptData);
-      console.log('Save result:', error);
+      const { data: insertData, error } = await supabase.from('receipts').insert(receiptData).select();
+      console.log('Insert result:', insertData, error);
       if (!error) {
         await fetchReceipts();
         setIsAdding(false);
