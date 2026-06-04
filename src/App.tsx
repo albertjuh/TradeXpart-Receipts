@@ -1158,8 +1158,9 @@ export default function App() {
 
           {/* Controls & List */}
           <div className="space-y-6">
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-              <div className="relative w-full md:w-96">
+            {/* Search + Add Category */}
+            <div className="flex gap-3 items-center">
+              <div className="relative flex-1">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-text-muted" />
                 <input
                   type="text"
@@ -1169,67 +1170,68 @@ export default function App() {
                   className="w-full pl-12 pr-4 py-3.5 bg-brand-card border border-brand-border rounded-2xl focus:outline-none focus:border-brand-accent/50 focus:ring-4 focus:ring-brand-accent/5 transition-all font-mono text-xs uppercase tracking-widest"
                 />
               </div>
-              <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 no-scrollbar">
-                {['All', ...allCategories].map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setFilterCategory(cat)}
-                    className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
-                      filterCategory === cat
-                        ? 'bg-brand-accent text-black border-brand-accent font-bold'
-                        : 'bg-brand-card text-brand-text-muted border-brand-border hover:border-brand-text-muted'
-                    }`}
-                  >
-                    {cat}
+              {showNewCatInFilter ? (
+                <form
+                  className="flex items-center gap-2 flex-shrink-0"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    const created = handleAddCategory(newCatInput);
+                    if (created) setFilterCategory(created);
+                    setNewCatInput('');
+                    setShowNewCatInFilter(false);
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={newCatInput}
+                    onChange={e => setNewCatInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Escape' && setShowNewCatInFilter(false)}
+                    placeholder="Category name..."
+                    className="px-3 py-3 rounded-2xl text-[11px] font-mono border border-brand-accent/50 bg-brand-card text-white focus:outline-none w-40"
+                  />
+                  <button type="submit" className="px-4 py-3 rounded-2xl text-[10px] font-mono font-bold bg-brand-accent text-black hover:scale-105 transition-all active:scale-95">
+                    Add
                   </button>
-                ))}
+                  <button type="button" onClick={() => setShowNewCatInFilter(false)} className="p-3 rounded-2xl text-brand-text-muted border border-brand-border hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </form>
+              ) : (
                 <button
-                  onClick={() => setFilterCategory('Incomplete')}
+                  onClick={() => { setShowNewCatInFilter(true); setNewCatInput(''); }}
+                  className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-accent/50 hover:text-brand-accent transition-all flex-shrink-0"
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  Add Category
+                </button>
+              )}
+            </div>
+
+            {/* Category filter pills */}
+            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+              {['All', ...allCategories].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setFilterCategory(cat)}
                   className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
-                    filterCategory === 'Incomplete'
-                      ? 'bg-orange-500 text-black border-orange-500 font-bold'
-                      : 'bg-brand-card text-orange-400 border-orange-500/30 hover:border-orange-400'
+                    filterCategory === cat
+                      ? 'bg-brand-accent text-black border-brand-accent font-bold'
+                      : 'bg-brand-card text-brand-text-muted border-brand-border hover:border-brand-text-muted'
                   }`}
                 >
-                  Incomplete
+                  {cat}
                 </button>
-
-                {/* New category inline creator */}
-                {showNewCatInFilter ? (
-                  <form
-                    className="flex items-center gap-1 flex-shrink-0"
-                    onSubmit={e => {
-                      e.preventDefault();
-                      const created = handleAddCategory(newCatInput);
-                      if (created) setFilterCategory(created);
-                      setNewCatInput('');
-                      setShowNewCatInFilter(false);
-                    }}
-                  >
-                    <input
-                      autoFocus
-                      value={newCatInput}
-                      onChange={e => setNewCatInput(e.target.value)}
-                      onKeyDown={e => e.key === 'Escape' && setShowNewCatInFilter(false)}
-                      placeholder="Category name..."
-                      className="px-3 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest border border-brand-accent/50 bg-brand-card text-white focus:outline-none w-36"
-                    />
-                    <button type="submit" className="px-3 py-2 rounded-xl text-[10px] font-mono font-bold bg-brand-accent text-black border border-brand-accent">
-                      Add
-                    </button>
-                    <button type="button" onClick={() => setShowNewCatInFilter(false)} className="px-2 py-2 rounded-xl text-brand-text-muted border border-brand-border hover:text-white">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </form>
-                ) : (
-                  <button
-                    onClick={() => { setShowNewCatInFilter(true); setNewCatInput(''); }}
-                    className="px-4 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border border-dashed border-brand-border text-brand-text-muted hover:border-brand-accent/50 hover:text-brand-accent flex-shrink-0 flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" /> New
-                  </button>
-                )}
-              </div>
+              ))}
+              <button
+                onClick={() => setFilterCategory('Incomplete')}
+                className={`px-5 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border flex-shrink-0 ${
+                  filterCategory === 'Incomplete'
+                    ? 'bg-orange-500 text-black border-orange-500 font-bold'
+                    : 'bg-brand-card text-orange-400 border-orange-500/30 hover:border-orange-400'
+                }`}
+              >
+                Incomplete
+              </button>
             </div>
 
             <div className="space-y-4">
