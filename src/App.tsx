@@ -4,11 +4,12 @@ import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
   Activity, Layers, Wallet, Package, Pencil, Check,
-  Sun, Moon, LayoutDashboard, Download,
+  Sun, Moon, LayoutDashboard, Download, Tag,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { Receipt, CATEGORIES } from './types';
+import { toTZS, isForeignCurrency } from './currency';
 import { supabase } from './supabase';
 import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
@@ -108,6 +109,10 @@ export default function App() {
   const [bulkEditIndex, setBulkEditIndex] = useState<number | null>(null);
   const [dupWarning, setDupWarning] = useState<{ vendor: string; amount: number; date: string | null } | null>(null);
   const dupPendingRef = useRef<(() => Promise<void>) | null>(null);
+
+  // Quick category picker state
+  const [quickCategoryId, setQuickCategoryId] = useState<string | null>(null);
+  const [quickCategoryPos, setQuickCategoryPos] = useState<{ top: number; left: number } | null>(null);
 
   // Camera state
   const [cameraActive, setCameraActive] = useState(false);
@@ -774,6 +779,22 @@ export default function App() {
     r.account_type === 'Unknown' ||
     (r.category === 'Other' && !r.notes);
 
+  const closeQuickCategory = () => {
+    setQuickCategoryId(null);
+    setQuickCategoryPos(null);
+  };
+
+  const handleQuickCategory = async (id: string, category: string) => {
+    closeQuickCategory();
+    try {
+      const { error } = await supabase.from('receipts').update({ category }).eq('id', id);
+      if (error) throw error;
+      setReceipts(prev => prev.map(r => r.id === id ? { ...r, category } : r));
+    } catch (e) {
+      console.error('Quick category update failed:', e instanceof Error ? e.message : e);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!selectedReceipt) return;
     setIsSaving(true);
@@ -873,7 +894,15 @@ export default function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const totalSpent = useMemo(() => filteredReceipts.reduce((s, r) => s + r.amount, 0), [filteredReceipts]);
+  const totalSpent = useMemo(
+    () => filteredReceipts.reduce((s, r) => s + toTZS(r.amount, r.currency), 0),
+    [filteredReceipts],
+  );
+
+  const hasForeignReceipts = useMemo(
+    () => filteredReceipts.some(r => isForeignCurrency(r.currency)),
+    [filteredReceipts],
+  );
 
   const reportData = useMemo(() => {
     const now = new Date();
@@ -889,17 +918,19 @@ export default function App() {
     const filtered = receipts.filter(r => {
       try { return new Date(r.date) >= start; } catch { return false; }
     });
-    const total = filtered.reduce((s, r) => s + r.amount, 0);
+    const total = filtered.reduce((s, r) => s + toTZS(r.amount, r.currency), 0);
     const byCategory: Record<string, number> = {};
-    filtered.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + r.amount; });
+    filtered.forEach(r => { byCategory[r.category] = (byCategory[r.category] || 0) + toTZS(r.amount, r.currency); });
     return { total, count: filtered.length, byCategory: Object.entries(byCategory).sort((a, b) => b[1] - a[1]) };
   }, [receipts, reportPeriod]);
 
   const categoryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
-    filteredReceipts.forEach(r => { totals[r.category] = (totals[r.category] || 0) + r.amount; });
+    filteredReceipts.forEach(r => { totals[r.category] = (totals[r.category] || 0) + toTZS(r.amount, r.currency); });
     return Object.entries(totals).sort((a, b) => b[1] - a[1]);
   }, [filteredReceipts]);
+
+  const uncategorizedCount = useMemo(() => receipts.filter(r => r.category === 'Other').length, [receipts]);
 
   const fullName = 'Albert John';
 
@@ -1049,7 +1080,7 @@ export default function App() {
                   {totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
               </div>
-              <div className="mt-8 flex items-center gap-4 text-xs font-mono text-brand-text-muted">
+              <div className="mt-8 flex items-center gap-4 text-xs font-mono text-brand-text-muted flex-wrap">
                 <div className="flex items-center gap-1">
                   <span className="text-brand-accent">●</span>
                   <span>{receipts.length} RECEIPTS STORED</span>
@@ -1058,6 +1089,12 @@ export default function App() {
                   <span className="text-brand-accent">●</span>
                   <span>{CATEGORIES.length} CATEGORIES</span>
                 </div>
+                {hasForeignReceipts && (
+                  <div className="flex items-center gap-1 text-amber-400">
+                    <span>●</span>
+                    <span>CONVERTED TO TSH</span>
+                  </div>
+                )}
               </div>
             </motion.div>
 
@@ -1184,6 +1221,24 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Uncategorized banner */}
+              {uncategorizedCount > 0 && (
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl border border-orange-500/30 bg-orange-500/5">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-3.5 h-3.5 text-orange-400" />
+                    <span className="text-[10px] font-mono text-orange-400">
+                      {uncategorizedCount} receipt{uncategorizedCount > 1 ? 's' : ''} need{uncategorizedCount === 1 ? 's' : ''} a category
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setFilterCategory('Other')}
+                    className="text-[9px] font-mono font-bold uppercase tracking-widest text-orange-400 hover:text-orange-300 transition-colors"
+                  >
+                    Show →
+                  </button>
+                </div>
+              )}
+
               {/* Transaction Log */}
               <div className="flex items-center justify-between px-2">
                 <div className="flex items-center gap-2">
@@ -1229,7 +1284,22 @@ export default function App() {
                                 <span>{receipt.date}</span>
                                 {receipt.time && <><span className="text-brand-border">/</span><span>{receipt.time}</span></>}
                                 <span className="text-brand-border">/</span>
-                                <span className="uppercase">{receipt.category}</span>
+                                {receipt.category === 'Other' ? (
+                                  <button
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setQuickCategoryId(receipt.id);
+                                      setQuickCategoryPos({ top: rect.bottom + 6, left: rect.left });
+                                    }}
+                                    className="flex items-center gap-1 text-orange-400 hover:text-orange-300 font-bold uppercase transition-colors"
+                                  >
+                                    <Tag className="w-2.5 h-2.5" />
+                                    Other
+                                  </button>
+                                ) : (
+                                  <span className="uppercase">{receipt.category}</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1251,6 +1321,11 @@ export default function App() {
                                 <span className="text-brand-accent text-xs mr-1">{receipt.currency || 'TSh'}</span>
                                 {receipt.amount.toLocaleString(undefined, { minimumFractionDigits: 0 })}
                               </div>
+                              {isForeignCurrency(receipt.currency) && (
+                                <div className="text-[9px] font-mono text-amber-400/80 mt-0.5">
+                                  ≈ TSh {toTZS(receipt.amount, receipt.currency).toLocaleString()}
+                                </div>
+                              )}
                             </div>
                             <div className="p-2 rounded-lg bg-brand-border/30 group-hover:bg-brand-accent group-hover:text-black transition-all">
                               <ChevronRight className="w-4 h-4" />
@@ -2202,14 +2277,26 @@ export default function App() {
                       <span>Receipt Total</span>
                       <span>{selectedReceipt.currency || 'TZS'} {selectedReceipt.amount.toLocaleString()}</span>
                     </div>
+                    {isForeignCurrency(selectedReceipt.currency) && (
+                      <div className="flex justify-between text-[9px] font-mono text-[#888] mb-3">
+                        <span>TZS Equivalent</span>
+                        <span>TSh {toTZS(selectedReceipt.amount, selectedReceipt.currency).toLocaleString()}</span>
+                      </div>
+                    )}
 
                     <div className="border-b border-dashed border-[#ccc] mb-3" />
 
                     {/* Total */}
-                    <div className="flex justify-between items-center mb-4">
+                    <div className="flex justify-between items-center mb-1">
                       <span className="text-[10px] font-mono font-bold uppercase text-[#1a1a1a]">TOTAL</span>
                       <span className="text-base font-bold font-mono text-[#1a1a1a]">{selectedReceipt.currency || 'TZS'} {selectedReceipt.amount.toLocaleString()}</span>
                     </div>
+                    {isForeignCurrency(selectedReceipt.currency) && (
+                      <div className="flex justify-end mb-4">
+                        <span className="text-[9px] font-mono text-[#888]">≈ TSh {toTZS(selectedReceipt.amount, selectedReceipt.currency).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {!isForeignCurrency(selectedReceipt.currency) && <div className="mb-4" />}
 
                     {/* Badges */}
                     <div className="flex gap-2 justify-center flex-wrap mb-4">
@@ -2358,6 +2445,28 @@ export default function App() {
           </button>
         </div>
       </nav>
+
+      {/* Quick category picker */}
+      {quickCategoryId && quickCategoryPos && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={closeQuickCategory} />
+          <div
+            className="fixed z-[61] bg-[#111111] border border-[#262626] rounded-2xl p-1.5 shadow-2xl min-w-[160px]"
+            style={{ top: quickCategoryPos.top, left: quickCategoryPos.left }}
+          >
+            <div className="px-3 py-1.5 text-[8px] font-mono uppercase tracking-[0.2em] text-[#5a5a5a]">Set Category</div>
+            {CATEGORIES.filter(c => c !== 'Other').map(cat => (
+              <button
+                key={cat}
+                onClick={() => handleQuickCategory(quickCategoryId, cat)}
+                className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-mono uppercase tracking-wide hover:bg-[#00FF66]/10 hover:text-[#00FF66] transition-all"
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {showExport && (
         <ExportModal

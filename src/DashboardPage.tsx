@@ -7,6 +7,7 @@ import {
 import { supabase } from './supabase';
 import type { Shipment } from './ShipmentsPage';
 import type { Receipt } from './types';
+import { toTZS } from './currency';
 
 type Props = {
   receipts: Receipt[];
@@ -54,7 +55,7 @@ function thisMonthTotal(receipts: Receipt[]) {
         return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
       } catch { return false; }
     })
-    .reduce((s, r) => s + r.amount, 0);
+    .reduce((s, r) => s + toTZS(r.amount, r.currency), 0);
 }
 
 export default function DashboardPage({
