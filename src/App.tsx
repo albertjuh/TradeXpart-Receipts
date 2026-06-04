@@ -110,6 +110,14 @@ export default function App() {
   const [dupWarning, setDupWarning] = useState<{ vendor: string; amount: number; date: string | null } | null>(null);
   const dupPendingRef = useRef<(() => Promise<void>) | null>(null);
 
+  // Custom categories (persisted to localStorage)
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('custom_categories') ?? '[]'); }
+    catch { return []; }
+  });
+  const [newCatInput, setNewCatInput] = useState('');
+  const [showNewCatInFilter, setShowNewCatInFilter] = useState(false);
+
   // Quick category picker state
   const [quickCategoryId, setQuickCategoryId] = useState<string | null>(null);
   const [quickCategoryPos, setQuickCategoryPos] = useState<{ top: number; left: number } | null>(null);
@@ -779,6 +787,16 @@ export default function App() {
     r.account_type === 'Unknown' ||
     (r.category === 'Other' && !r.notes);
 
+  const handleAddCategory = (name: string): string | null => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    if (allCategories.some(c => c.toLowerCase() === trimmed.toLowerCase())) return trimmed;
+    const updated = [...customCategories, trimmed];
+    setCustomCategories(updated);
+    localStorage.setItem('custom_categories', JSON.stringify(updated));
+    return trimmed;
+  };
+
   const closeQuickCategory = () => {
     setQuickCategoryId(null);
     setQuickCategoryPos(null);
@@ -929,6 +947,8 @@ export default function App() {
     filteredReceipts.forEach(r => { totals[r.category] = (totals[r.category] || 0) + toTZS(r.amount, r.currency); });
     return Object.entries(totals).sort((a, b) => b[1] - a[1]);
   }, [filteredReceipts]);
+
+  const allCategories = useMemo(() => [...CATEGORIES, ...customCategories], [customCategories]);
 
   const uncategorizedCount = useMemo(() => receipts.filter(r => r.category === 'Other').length, [receipts]);
 
@@ -1087,7 +1107,7 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-brand-accent">●</span>
-                  <span>{CATEGORIES.length} CATEGORIES</span>
+                  <span>{allCategories.length} CATEGORIES</span>
                 </div>
                 {hasForeignReceipts && (
                   <div className="flex items-center gap-1 text-amber-400">
@@ -1150,7 +1170,7 @@ export default function App() {
                 />
               </div>
               <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 no-scrollbar">
-                {['All', ...CATEGORIES].map(cat => (
+                {['All', ...allCategories].map(cat => (
                   <button
                     key={cat}
                     onClick={() => setFilterCategory(cat)}
@@ -1173,6 +1193,42 @@ export default function App() {
                 >
                   Incomplete
                 </button>
+
+                {/* New category inline creator */}
+                {showNewCatInFilter ? (
+                  <form
+                    className="flex items-center gap-1 flex-shrink-0"
+                    onSubmit={e => {
+                      e.preventDefault();
+                      const created = handleAddCategory(newCatInput);
+                      if (created) setFilterCategory(created);
+                      setNewCatInput('');
+                      setShowNewCatInFilter(false);
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      value={newCatInput}
+                      onChange={e => setNewCatInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Escape' && setShowNewCatInFilter(false)}
+                      placeholder="Category name..."
+                      className="px-3 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest border border-brand-accent/50 bg-brand-card text-white focus:outline-none w-36"
+                    />
+                    <button type="submit" className="px-3 py-2 rounded-xl text-[10px] font-mono font-bold bg-brand-accent text-black border border-brand-accent">
+                      Add
+                    </button>
+                    <button type="button" onClick={() => setShowNewCatInFilter(false)} className="px-2 py-2 rounded-xl text-brand-text-muted border border-brand-border hover:text-white">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    onClick={() => { setShowNewCatInFilter(true); setNewCatInput(''); }}
+                    className="px-4 py-2 rounded-xl text-[10px] font-mono uppercase tracking-widest transition-all border border-dashed border-brand-border text-brand-text-muted hover:border-brand-accent/50 hover:text-brand-accent flex-shrink-0 flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> New
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1639,10 +1695,10 @@ export default function App() {
                     </div>
                     <div>
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Category</label>
-                      <select value={CATEGORIES.includes(ocrFields.category) ? ocrFields.category : 'Other'}
+                      <select value={allCategories.includes(ocrFields.category) ? ocrFields.category : 'Other'}
                         onChange={e => setOcrFields(f => f ? { ...f, category: e.target.value } : f)}
                         className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div className="col-span-2">
@@ -2183,7 +2239,7 @@ export default function App() {
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Category</label>
                       <select value={editForm.category ?? 'Other'} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
                         className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
@@ -2455,15 +2511,42 @@ export default function App() {
             style={{ top: quickCategoryPos.top, left: quickCategoryPos.left }}
           >
             <div className="px-3 py-1.5 text-[8px] font-mono uppercase tracking-[0.2em] text-[#5a5a5a]">Set Category</div>
-            {CATEGORIES.filter(c => c !== 'Other').map(cat => (
-              <button
-                key={cat}
-                onClick={() => handleQuickCategory(quickCategoryId, cat)}
-                className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-mono uppercase tracking-wide hover:bg-[#00FF66]/10 hover:text-[#00FF66] transition-all"
+            <div className="max-h-64 overflow-y-auto">
+              {allCategories.filter(c => c !== 'Other').map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => handleQuickCategory(quickCategoryId, cat)}
+                  className="w-full text-left px-3 py-2 rounded-xl text-[11px] font-mono uppercase tracking-wide hover:bg-[#00FF66]/10 hover:text-[#00FF66] transition-all"
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <div className="border-t border-[#262626] mt-1 pt-1">
+              <form
+                onSubmit={e => {
+                  e.preventDefault();
+                  const created = handleAddCategory(newCatInput);
+                  if (created) handleQuickCategory(quickCategoryId, created);
+                  setNewCatInput('');
+                }}
+                className="flex items-center gap-1 px-2 py-1"
               >
-                {cat}
-              </button>
-            ))}
+                <input
+                  value={newCatInput}
+                  onChange={e => setNewCatInput(e.target.value)}
+                  placeholder="New category..."
+                  className="flex-1 bg-[#1a1a1a] border border-[#333] rounded-lg px-2.5 py-1.5 text-[10px] font-mono text-white placeholder-[#555] focus:outline-none focus:border-[#00FF66]/50 min-w-0"
+                />
+                <button
+                  type="submit"
+                  disabled={!newCatInput.trim()}
+                  className="px-2.5 py-1.5 rounded-lg bg-[#00FF66] text-black text-[10px] font-bold font-mono disabled:opacity-40 transition-all"
+                >
+                  Add
+                </button>
+              </form>
+            </div>
           </div>
         </>
       )}
