@@ -196,6 +196,9 @@ export default function ShipmentDetailPage({ shipmentId, onBack }: Props) {
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading]   = useState(true);
   const [toast, setToast]       = useState<string | null>(null);
+  const [loaded, setLoaded]     = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [open, setOpen] = useState<Set<string>>(new Set(['details', 'tax']));
   const toggle = (k: string) =>
@@ -247,10 +250,47 @@ export default function ShipmentDetailPage({ shipmentId, onBack }: Props) {
   useEffect(() => {
     supabase.from('shipments').select('*').eq('id', shipmentId).single()
       .then(({ data, error }) => {
-        if (!error && data) setShipment(data as Shipment);
+        if (!error && data) {
+          const row = data as Shipment;
+          setShipment(row);
+          const rowCosts = row.costs as CostLine[] | undefined;
+          const rowMilestones = row.milestones as Milestone[] | undefined;
+          const rowDocs = row.docs as DocItem[] | undefined;
+          const rowExtraDocs = row.extra_docs as DocItem[] | undefined;
+          const rowTax = row.tax_inputs as TaxInputs | undefined;
+          setCosts(Array.isArray(rowCosts) && rowCosts.length ? rowCosts : DEFAULT_COSTS);
+          setMilestones(Array.isArray(rowMilestones) && rowMilestones.length ? rowMilestones : DEFAULT_MILESTONES);
+          setDocs(Array.isArray(rowDocs) && rowDocs.length ? rowDocs : DEFAULT_DOCS);
+          setExtraDocs(Array.isArray(rowExtraDocs) ? rowExtraDocs : []);
+          if (rowTax) setTax(rowTax);
+          if (row.selling_price != null) setSellingPrice(String(row.selling_price));
+        }
         setLoading(false);
+        setLoaded(true);
       });
   }, [shipmentId]);
+
+  // ── Autosave (debounced) ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!loaded) return;
+    setSaveStatus('saving');
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      const { error } = await supabase.from('shipments').update({
+        costs,
+        milestones,
+        docs,
+        extra_docs: extraDocs,
+        tax_inputs: tax,
+        selling_price: sellingPrice || null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', shipmentId);
+      setSaveStatus(error ? 'error' : 'saved');
+      if (error) console.error('Shipment autosave FAILED:', error.message);
+    }, 800);
+    return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [costs, milestones, docs, extraDocs, tax, sellingPrice, loaded, shipmentId]);
 
   // ── Tax calculations ──────────────────────────────────────────────────────
   const calc = useMemo(() => {
@@ -492,9 +532,18 @@ export default function ShipmentDetailPage({ shipmentId, onBack }: Props) {
         accept="image/*,.pdf,.xlsx,.docx,.xls,.doc" onChange={onFileSelected} />
 
       {/* Back */}
-      <button onClick={onBack} className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-brand-text-muted hover:text-brand-accent transition-colors">
-        <ArrowLeft className="w-3.5 h-3.5" /> Shipments
-      </button>
+      <div className="flex items-center justify-between">
+        <button onClick={onBack} className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-brand-text-muted hover:text-brand-accent transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" /> Shipments
+        </button>
+        <span className={`text-[9px] font-mono uppercase tracking-widest ${
+          saveStatus === 'error' ? 'text-red-400' : 'text-brand-text-muted'
+        }`}>
+          {saveStatus === 'saving' && 'Saving…'}
+          {saveStatus === 'saved' && 'All changes saved'}
+          {saveStatus === 'error' && 'Save failed — check connection'}
+        </span>
+      </div>
 
       {/* ── Summary card ─────────────────────────────────────────────────── */}
       <div className="glass rounded-2xl p-5 md:p-7 relative overflow-hidden">

@@ -136,11 +136,7 @@ export default function App() {
     try {
       console.log('Fetching receipts...');
       setReceiptsError(null);
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout after 5s')), 5000)
-      );
-      const query = supabase.from('receipts').select('*').order('created_at', { ascending: false });
-      const { data, error } = await Promise.race([query, timeout]) as Awaited<typeof query>;
+      const { data, error } = await supabase.from('receipts').select('*').order('created_at', { ascending: false });
       console.log('Receipts result:', data, error);
       if (error) throw error;
       setReceipts((data ?? []).map((row) => ({

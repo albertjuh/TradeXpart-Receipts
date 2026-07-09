@@ -26,6 +26,12 @@ export type Shipment = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  costs?: unknown;
+  milestones?: unknown;
+  docs?: unknown;
+  extra_docs?: unknown;
+  tax_inputs?: unknown;
+  selling_price?: string | number | null;
 };
 
 const STATUS_STYLES: Record<string, string> = {
