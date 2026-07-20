@@ -7,10 +7,12 @@ import {
 import { supabase } from './supabase';
 import type { Shipment } from './ShipmentsPage';
 import type { Receipt } from './types';
+import type { Sale } from './SalesPage';
 import { toTZS } from './currency';
 
 type Props = {
   receipts: Receipt[];
+  sales: Sale[];
   userName: string;
   onNewShipment: () => void;
   onAddReceipt: () => void;
@@ -58,8 +60,20 @@ function thisMonthTotal(receipts: Receipt[]) {
     .reduce((s, r) => s + toTZS(r.amount, r.currency), 0);
 }
 
+function thisMonthRevenue(sales: Sale[]) {
+  const now = new Date();
+  return sales
+    .filter(s => {
+      try {
+        const d = new Date(s.date);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      } catch { return false; }
+    })
+    .reduce((s, r) => s + toTZS(r.amount, r.currency), 0);
+}
+
 export default function DashboardPage({
-  receipts, userName,
+  receipts, sales, userName,
   onNewShipment, onAddReceipt, onGoToReceipts, onGoToShipments, onSelectShipment,
 }: Props) {
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -93,6 +107,7 @@ export default function DashboardPage({
   const activeShipments = shipments.filter(s => ACTIVE_STATUSES.has(s.status));
   const pendingReceipts = receipts.filter(r => r.status === 'pending').length;
   const monthTotal = thisMonthTotal(receipts);
+  const monthRevenue = thisMonthRevenue(sales);
 
   const recentReceipts = [...receipts]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -123,6 +138,13 @@ export default function DashboardPage({
       bg: 'bg-amber-500/10 border-amber-500/20',
     },
     {
+      label: 'Revenue This Month',
+      value: `TSh ${monthRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      icon: <TrendingUp className="w-5 h-5" />,
+      color: 'text-brand-accent',
+      bg: 'bg-brand-accent/10 border-brand-accent/20',
+    },
+    {
       label: 'Pending Approvals',
       value: String(pendingReceipts),
       icon: <Clock className="w-5 h-5" />,
@@ -145,7 +167,7 @@ export default function DashboardPage({
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {stats.map(s => (
           <div key={s.label} className={`glass rounded-2xl p-4 border ${s.bg}`}>
             <div className={`mb-3 ${s.color}`}>{s.icon}</div>

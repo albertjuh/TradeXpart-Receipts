@@ -4,7 +4,7 @@ import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
   Activity, Layers, Wallet, Package, Pencil, Check,
-  Sun, Moon, LayoutDashboard, Download, Tag,
+  Sun, Moon, LayoutDashboard, Download, Tag, TrendingUp,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -14,9 +14,10 @@ import { supabase } from './supabase';
 import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
 import DashboardPage from './DashboardPage';
+import SalesPage, { type Sale } from './SalesPage';
 import ExportModal from './components/ExportModal';
 
-type Page = 'dashboard' | 'receipts' | 'shipments';
+type Page = 'dashboard' | 'receipts' | 'shipments' | 'sales';
 
 type ParsedItem = {
   vendor: string;
@@ -59,6 +60,9 @@ export default function App() {
 
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [receiptsError, setReceiptsError] = useState<string | null>(null);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [salesError, setSalesError] = useState<string | null>(null);
+  const [openSaleModal, setOpenSaleModal] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState<string | 'All'>('All');
@@ -170,9 +174,23 @@ export default function App() {
     }
   };
 
+  const fetchSales = async () => {
+    try {
+      setSalesError(null);
+      const { data, error } = await supabase.from('sales').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      setSales((data ?? []) as Sale[]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('fetchSales FAILED:', msg);
+      setSalesError(msg);
+    }
+  };
+
   useEffect(() => {
     testConnection();
     fetchReceipts();
+    fetchSales();
   }, []);
 
   const handleAddReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -918,6 +936,26 @@ export default function App() {
     [filteredReceipts],
   );
 
+  const totalRevenue = useMemo(
+    () => sales.reduce((s, r) => s + toTZS(r.amount, r.currency), 0),
+    [sales],
+  );
+
+  const hasForeignSales = useMemo(
+    () => sales.some(r => isForeignCurrency(r.currency)),
+    [sales],
+  );
+
+  const totalSpentUnfiltered = useMemo(
+    () => receipts.reduce((s, r) => s + toTZS(r.amount, r.currency), 0),
+    [receipts],
+  );
+
+  const netProfit = useMemo(
+    () => totalRevenue - totalSpentUnfiltered,
+    [totalRevenue, totalSpentUnfiltered],
+  );
+
   const reportData = useMemo(() => {
     const now = new Date();
     let start: Date;
@@ -954,6 +992,7 @@ export default function App() {
     { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
     { key: 'receipts',  label: 'Receipts',  icon: <Wallet className="w-4 h-4" /> },
     { key: 'shipments', label: 'Shipments', icon: <Package className="w-4 h-4" /> },
+    { key: 'sales',     label: 'Sales',     icon: <TrendingUp className="w-4 h-4" /> },
   ];
 
   const goToShipments = () => { setCurrentPage('shipments'); setSelectedShipmentId(null); };
@@ -1036,6 +1075,7 @@ export default function App() {
       {currentPage === 'dashboard' && (
         <DashboardPage
           receipts={receipts}
+          sales={sales}
           userName={fullName}
           onNewShipment={() => { setCurrentPage('shipments'); setOpenShipmentModal(true); }}
           onAddReceipt={() => setIsAdding(true)}
@@ -1058,6 +1098,32 @@ export default function App() {
             onSelectShipment={setSelectedShipmentId}
           />
         )
+      )}
+
+      {currentPage === 'sales' && (
+        <>
+          {salesError && (
+            <div className="max-w-6xl mx-auto px-6 pt-6">
+              <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl border border-red-500/40 bg-red-500/8 text-red-400">
+                <span className="text-[11px] font-mono">⚠ Could not load sales: {salesError}</span>
+                <button
+                  onClick={fetchSales}
+                  className="flex-shrink-0 text-[10px] font-mono font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border border-red-500/40 hover:bg-red-500/20 transition-all"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          )}
+          <SalesPage
+            forceOpenModal={openSaleModal}
+            onForceOpenModalHandled={() => setOpenSaleModal(false)}
+            totalRevenue={totalRevenue}
+            netProfit={netProfit}
+            hasForeignSales={hasForeignSales}
+            onSaleLogged={fetchSales}
+          />
+        </>
       )}
 
       {currentPage === 'receipts' && (
@@ -2475,6 +2541,7 @@ export default function App() {
             onClick={() => {
               if (currentPage === 'receipts') setIsAdding(true);
               else if (currentPage === 'shipments') setOpenShipmentModal(true);
+              else if (currentPage === 'sales') setOpenSaleModal(true);
               else setIsAdding(true);
             }}
             className="w-14 h-14 bg-brand-accent text-black rounded-2xl flex items-center justify-center -mt-7 shadow-[0_0_30px_rgba(0,255,102,0.35)] active:scale-95 transition-all"
@@ -2491,11 +2558,11 @@ export default function App() {
           </button>
 
           <button
-            onClick={toggleTheme}
-            className="flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl transition-all text-brand-text-muted"
+            onClick={() => setCurrentPage('sales')}
+            className={`flex flex-col items-center gap-1.5 px-4 py-2 rounded-xl transition-all ${currentPage === 'sales' ? 'text-brand-accent' : 'text-brand-text-muted'}`}
           >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            <span className="text-[7px] font-mono uppercase tracking-widest">Theme</span>
+            <TrendingUp className="w-5 h-5" />
+            <span className="text-[7px] font-mono uppercase tracking-widest">Sales</span>
           </button>
         </div>
       </nav>
