@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import jsQR from 'jsqr';
+import type { Session } from '@supabase/supabase-js';
 import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
   Activity, Layers, Wallet, Package, Pencil, Check,
-  Sun, Moon, LayoutDashboard, Download, Tag, TrendingUp,
+  Sun, Moon, LayoutDashboard, Download, Tag, TrendingUp, LogOut,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { Receipt, CATEGORIES } from './types';
 import { toTZS, isForeignCurrency } from './currency';
 import { supabase } from './supabase';
+import Login from './Login';
 import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
 import DashboardPage from './DashboardPage';
@@ -58,6 +60,9 @@ function useTheme() {
 export default function App() {
   const { theme, toggle: toggleTheme } = useTheme();
 
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [profile, setProfile] = useState<{ full_name: string | null; role: 'admin' | 'accountant' } | null>(null);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [receiptsError, setReceiptsError] = useState<string | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -188,6 +193,23 @@ export default function App() {
   };
 
   useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user.id) { setProfile(null); return; }
+    supabase.from('profiles').select('full_name, role').eq('user_id', session.user.id).single()
+      .then(({ data }) => setProfile(data as { full_name: string | null; role: 'admin' | 'accountant' } | null));
+  }, [session?.user.id]);
+
+  useEffect(() => {
     testConnection();
     fetchReceipts();
     fetchSales();
@@ -221,7 +243,7 @@ export default function App() {
         currency: data.currency ?? 'TZS', date: data.date ?? new Date().toISOString().split('T')[0],
         time: data.time ?? '', category: data.category ?? 'Other', account_type: 'Unknown',
         payment_method: data.payment_method ?? null, notes: data.notes ?? null,
-        status: 'logged', user_id: null, submitted_by: 'Albert John',
+        status: 'logged', user_id: null, submitted_by: fullName,
       });
       if (!insertError) { await fetchReceipts(); setIsAdding(false); }
     } catch (error) {
@@ -586,7 +608,7 @@ export default function App() {
         notes:          ocrFields.notes || null,
         status:         'complete',
         user_id:        null,
-        submitted_by:   'Albert John',
+        submitted_by:   fullName,
       };
       console.log('Saving receipt...', receiptData);
       const { data: insertData, error } = await supabase.from('receipts').insert(receiptData).select();
@@ -668,7 +690,7 @@ export default function App() {
         notes:          item.notes ?? null,
         status:         'logged',
         user_id:        null,
-        submitted_by:   'Albert John',
+        submitted_by:   fullName,
       }));
       const { error } = await supabase.from('receipts').insert(rows);
       if (!error) {
@@ -739,7 +761,7 @@ export default function App() {
         date: item.date || null, time: '', category: item.category || 'Other',
         account_type: 'Business' as Receipt['account_type'],
         payment_method: item.payment_method || null, notes: item.notes || null,
-        status: 'complete' as Receipt['status'], user_id: null, submitted_by: 'Albert John',
+        status: 'complete' as Receipt['status'], user_id: null, submitted_by: fullName,
       }));
       const { error } = await supabase.from('receipts').insert(rows);
       if (!error) {
@@ -986,7 +1008,7 @@ export default function App() {
 
   const uncategorizedCount = useMemo(() => receipts.filter(r => r.category === 'Other').length, [receipts]);
 
-  const fullName = 'Albert John';
+  const fullName = profile?.full_name || session?.user.email || 'User';
 
   const NAV_ITEMS: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -996,6 +1018,24 @@ export default function App() {
   ];
 
   const goToShipments = () => { setCurrentPage('shipments'); setSelectedShipmentId(null); };
+
+  if (authLoading) {
+    return (
+      <div className="w-full max-w-[100vw] min-h-screen bg-brand-bg text-white font-sans flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-6">
+          <div className="relative">
+            <div className="w-20 h-20 border-4 border-brand-accent/20 rounded-full animate-spin border-t-brand-accent" />
+            <Activity className="absolute inset-0 m-auto w-8 h-8 text-brand-accent animate-pulse" />
+          </div>
+          <div className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Login />;
+  }
 
   return (
     <div className="relative w-full max-w-[100vw] overflow-x-hidden min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
@@ -1039,9 +1079,23 @@ export default function App() {
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
 
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="p-2 rounded-xl border border-brand-border text-brand-text-muted hover:text-red-400 hover:border-red-400/40 transition-all"
+            title="Sign out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
             <div className="w-1.5 h-1.5 bg-brand-accent rounded-full animate-pulse" />
             <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-tighter">Cloud Sync</span>
+          </div>
+
+          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
+            <span className="text-[10px] font-mono text-brand-accent uppercase tracking-tighter">
+              {profile?.role === 'admin' ? 'Admin' : 'Accountant'}
+            </span>
           </div>
 
 <button
