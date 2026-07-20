@@ -1092,7 +1092,7 @@ export default function App() {
             <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-tighter">Cloud Sync</span>
           </div>
 
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
             <span className="text-[10px] font-mono text-brand-accent uppercase tracking-tighter">
               {profile?.role === 'admin' ? 'Admin' : 'Accountant'}
             </span>
