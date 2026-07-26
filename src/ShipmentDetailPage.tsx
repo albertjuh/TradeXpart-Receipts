@@ -200,6 +200,8 @@ export default function ShipmentDetailPage({ shipmentId, onBack }: Props) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [deleting, setDeleting] = useState(false);
+
   const [open, setOpen] = useState<Set<string>>(new Set(['details', 'tax']));
   const toggle = (k: string) =>
     setOpen(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
@@ -476,6 +478,23 @@ export default function ShipmentDetailPage({ shipmentId, onBack }: Props) {
     }
   };
 
+  const deleteShipment = async () => {
+    if (!confirm('Are you sure you want to delete this shipment? This will also delete all uploaded documents.')) return;
+    setDeleting(true);
+    try {
+      const paths = [...docs, ...extraDocs].flatMap(d => d.versions.map(v => v.path));
+      if (paths.length > 0) {
+        await supabase.storage.from(BUCKET).remove(paths);
+      }
+      const { error } = await supabase.from('shipments').delete().eq('id', shipmentId);
+      if (error) throw error;
+      onBack();
+    } catch (err) {
+      showToast('Delete failed');
+      setDeleting(false);
+    }
+  };
+
   const triggerUpload = (key: string) => {
     setPendingDocKey(key);
     fileInputRef.current?.click();
@@ -536,13 +555,23 @@ export default function ShipmentDetailPage({ shipmentId, onBack }: Props) {
         <button onClick={onBack} className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-brand-text-muted hover:text-brand-accent transition-colors">
           <ArrowLeft className="w-3.5 h-3.5" /> Shipments
         </button>
-        <span className={`text-[9px] font-mono uppercase tracking-widest ${
-          saveStatus === 'error' ? 'text-red-400' : 'text-brand-text-muted'
-        }`}>
-          {saveStatus === 'saving' && 'Saving…'}
-          {saveStatus === 'saved' && 'All changes saved'}
-          {saveStatus === 'error' && 'Save failed — check connection'}
-        </span>
+        <div className="flex items-center gap-4">
+          <span className={`text-[9px] font-mono uppercase tracking-widest ${
+            saveStatus === 'error' ? 'text-red-400' : 'text-brand-text-muted'
+          }`}>
+            {saveStatus === 'saving' && 'Saving…'}
+            {saveStatus === 'saved' && 'All changes saved'}
+            {saveStatus === 'error' && 'Save failed — check connection'}
+          </span>
+          <button
+            onClick={deleteShipment}
+            disabled={deleting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-mono font-bold uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20 transition-all disabled:opacity-40"
+          >
+            {deleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+            Delete Shipment
+          </button>
+        </div>
       </div>
 
       {/* ── Summary card ─────────────────────────────────────────────────── */}

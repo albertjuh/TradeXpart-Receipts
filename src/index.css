@@ -14,7 +14,7 @@
 
 /* ── Light mode token overrides ─────────────────────────────────────────────── */
 :root[data-theme="light"] {
-  --color-brand-bg: #f3f4f6;
+  --color-brand-bg: #e9ecf1;
   --color-brand-card: #ffffff;
   --color-brand-accent: #00FF66;   /* same green, unchanged */
   --color-brand-border: #e5e7eb;
@@ -50,13 +50,14 @@
 @layer utilities {
   /* ── Glass card ─────────────────────────────────────────────────────────── */
   .glass {
-    @apply bg-brand-card/80 backdrop-blur-xl border border-brand-border;
+    @apply bg-brand-card/75 backdrop-blur-xl border border-brand-border;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   }
 
   :root[data-theme="light"] .glass {
-    background-color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.75);
     border-color: #e5e7eb;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.10), 0 1px 2px rgba(15, 23, 42, 0.04);
   }
 
   /* ── Receipt gradient ───────────────────────────────────────────────────── */
