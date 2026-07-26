@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Loader2, TrendingUp, DollarSign } from 'lucide-react';
+import { Plus, Loader2, TrendingUp, DollarSign, Users } from 'lucide-react';
 import { supabase } from './supabase';
 import CreateSaleModal from './components/CreateSaleModal';
 
@@ -39,10 +39,11 @@ type Props = {
   netProfit: number;
   hasForeignSales: boolean;
   onSaleLogged?: () => void;
+  onViewClients?: () => void;
 };
 
 export default function SalesPage({
-  forceOpenModal = false, onForceOpenModalHandled, totalRevenue, netProfit, hasForeignSales, onSaleLogged,
+  forceOpenModal = false, onForceOpenModalHandled, totalRevenue, netProfit, hasForeignSales, onSaleLogged, onViewClients,
 }: Props) {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,13 +94,24 @@ export default function SalesPage({
             {sales.length} RECORDS TOTAL
           </p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-brand-accent text-black px-6 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
-        >
-          <Plus className="w-4 h-4" />
-          NEW SALE
-        </button>
+        <div className="flex items-center gap-2">
+          {onViewClients && (
+            <button
+              onClick={onViewClients}
+              className="border border-brand-border text-brand-text-muted px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 hover:border-brand-accent/40 hover:text-brand-accent transition-all active:scale-95"
+            >
+              <Users className="w-4 h-4" />
+              BY CLIENT
+            </button>
+          )}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-brand-accent text-black px-6 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
+          >
+            <Plus className="w-4 h-4" />
+            NEW SALE
+          </button>
+        </div>
       </div>
 
       {/* Bento summary */}

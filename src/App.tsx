@@ -5,7 +5,7 @@ import {
   Plus, Search, PieChart, Trash2, Camera, Loader2, X,
   ChevronRight, ArrowUpRight,
   Activity, Layers, Wallet, Package, Pencil, Check,
-  Sun, Moon, LayoutDashboard, Download, Tag, TrendingUp, LogOut,
+  Sun, Moon, LayoutDashboard, Download, Tag, TrendingUp, LogOut, Users,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -17,9 +17,10 @@ import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
 import DashboardPage from './DashboardPage';
 import SalesPage, { type Sale } from './SalesPage';
+import ClientsPage from './ClientsPage';
 import ExportModal from './components/ExportModal';
 
-type Page = 'dashboard' | 'receipts' | 'shipments' | 'sales';
+type Page = 'dashboard' | 'receipts' | 'shipments' | 'sales' | 'clients';
 
 type ParsedItem = {
   vendor: string;
@@ -1015,6 +1016,7 @@ export default function App() {
     { key: 'receipts',  label: 'Receipts',  icon: <Wallet className="w-4 h-4" /> },
     { key: 'shipments', label: 'Shipments', icon: <Package className="w-4 h-4" /> },
     { key: 'sales',     label: 'Sales',     icon: <TrendingUp className="w-4 h-4" /> },
+    { key: 'clients',   label: 'Clients',   icon: <Users className="w-4 h-4" /> },
   ];
 
   const goToShipments = () => { setCurrentPage('shipments'); setSelectedShipmentId(null); };
@@ -1176,8 +1178,13 @@ export default function App() {
             netProfit={netProfit}
             hasForeignSales={hasForeignSales}
             onSaleLogged={fetchSales}
+            onViewClients={() => setCurrentPage('clients')}
           />
         </>
+      )}
+
+      {currentPage === 'clients' && (
+        <ClientsPage sales={sales} />
       )}
 
       {currentPage === 'receipts' && (
