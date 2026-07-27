@@ -14,10 +14,10 @@
 
 /* ── Light mode token overrides ─────────────────────────────────────────────── */
 :root[data-theme="light"] {
-  --color-brand-bg: #e9ecf1;
+  --color-brand-bg: #F5F6FB;
   --color-brand-card: #ffffff;
-  --color-brand-accent: #00FF66;   /* same green, unchanged */
-  --color-brand-border: #e5e7eb;
+  --color-brand-accent: #10B981;   /* softer corporate emerald — neon #00FF66 was tuned for a black bg */
+  --color-brand-border: #E7E9F0;
   --color-brand-text-muted: #6b7280;
 }
 
@@ -91,7 +91,7 @@
 
   /* ── Page background ────────────────────────────────────────────────────── */
   :root[data-theme="light"] .bg-brand-bg {
-    background-color: #f3f4f6;
+    background-color: #F5F6FB;
   }
 
   /* ── Card background ────────────────────────────────────────────────────── */
@@ -166,8 +166,8 @@
   :root[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
   :root[data-theme="light"] select:focus,
   :root[data-theme="light"] textarea:focus {
-    border-color: #00FF66;
-    box-shadow: 0 0 0 3px rgba(0, 255, 102, 0.12);
+    border-color: #10B981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
     outline: none;
   }
 
@@ -224,6 +224,10 @@
     border-color: #93c5fd;
   }
 
+  :root[data-theme="light"] .text-blue-400 {
+    color: #2563eb;
+  }
+
   /* ── Red accents ────────────────────────────────────────────────────────── */
   :root[data-theme="light"] .bg-red-500\/10 {
     background-color: #fef2f2;
@@ -244,6 +248,10 @@
 
   :root[data-theme="light"] .border-purple-500\/30 {
     border-color: #c4b5fd;
+  }
+
+  :root[data-theme="light"] .text-purple-400 {
+    color: #7c3aed;
   }
 
   /* ── Dividers ───────────────────────────────────────────────────────────── */

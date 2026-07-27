@@ -113,19 +113,19 @@ export default function ExportModal({ receiptCount, shipmentCount, onClose }: Pr
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-sm bg-[#111111] border border-[#262626] rounded-3xl p-8 shadow-2xl">
+      <div className="relative w-full max-w-sm bg-brand-card border border-brand-border rounded-3xl p-8 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-7">
           <div>
-            <h2 className="text-lg font-bold font-mono uppercase tracking-tight">Export Data</h2>
-            <p className="text-[10px] font-mono text-[#a3a3a3] uppercase tracking-widest mt-0.5">
+            <h2 className="text-lg font-bold font-mono uppercase tracking-tight text-white">Export Data</h2>
+            <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-0.5">
               Download as Excel (.xlsx)
             </p>
           </div>
           {status !== 'loading' && (
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-[#a3a3a3] hover:text-white hover:bg-[#1f1f1f] transition-all"
+              className="p-2 rounded-xl text-brand-text-muted hover:text-white hover:bg-brand-border/60 transition-all"
             >
               <X className="w-4 h-4" />
             </button>
@@ -135,18 +135,18 @@ export default function ExportModal({ receiptCount, shipmentCount, onClose }: Pr
         {status === 'done' ? (
           /* Success state */
           <div className="py-8 flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-full bg-[#00FF66]/10 border border-[#00FF66]/30 flex items-center justify-center">
-              <Check className="w-7 h-7 text-[#00FF66]" />
+            <div className="w-14 h-14 rounded-full bg-brand-accent/10 border border-brand-accent/30 flex items-center justify-center">
+              <Check className="w-7 h-7 text-brand-accent" />
             </div>
-            <p className="text-sm font-mono font-bold text-[#00FF66] uppercase tracking-tight">
+            <p className="text-sm font-mono font-bold text-brand-accent uppercase tracking-tight">
               Export ready — downloading...
             </p>
           </div>
         ) : status === 'loading' ? (
           /* Loading state */
           <div className="py-8 flex flex-col items-center gap-4">
-            <Loader2 className="w-7 h-7 text-[#00FF66] animate-spin" />
-            <p className="text-[11px] font-mono text-[#a3a3a3] uppercase tracking-widest">
+            <Loader2 className="w-7 h-7 text-brand-accent animate-spin" />
+            <p className="text-[11px] font-mono text-brand-text-muted uppercase tracking-widest">
               Preparing export...
             </p>
           </div>
@@ -155,7 +155,7 @@ export default function ExportModal({ receiptCount, shipmentCount, onClose }: Pr
           <div className="space-y-6">
             {/* Sheet selection */}
             <div className="space-y-2">
-              <p className="text-[9px] font-mono uppercase tracking-[0.2em] text-[#a3a3a3] mb-3">Include</p>
+              <p className="text-[9px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-3">Include</p>
               {[
                 { label: 'Receipts', count: receiptCount, checked: includeReceipts, set: setIncludeReceipts },
                 { label: 'Shipments', count: shipmentCount, checked: includeShipments, set: setIncludeShipments },
@@ -164,19 +164,19 @@ export default function ExportModal({ receiptCount, shipmentCount, onClose }: Pr
                   key={label}
                   className={`flex items-center justify-between px-4 py-3 rounded-xl border cursor-pointer transition-all ${
                     checked
-                      ? 'border-[#00FF66]/40 bg-[#00FF66]/5'
-                      : 'border-[#262626] hover:border-[#3a3a3a]'
+                      ? 'border-brand-accent/40 bg-brand-accent/5'
+                      : 'border-brand-border hover:border-brand-text-muted'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${
-                      checked ? 'bg-[#00FF66] border-[#00FF66]' : 'border-[#3a3a3a]'
+                      checked ? 'bg-brand-accent border-brand-accent' : 'border-brand-text-muted'
                     }`}>
                       {checked && <Check className="w-2.5 h-2.5 text-black" strokeWidth={3} />}
                     </div>
-                    <span className="text-sm font-mono font-bold uppercase tracking-tight">{label}</span>
+                    <span className="text-sm font-mono font-bold uppercase tracking-tight text-white">{label}</span>
                   </div>
-                  <span className="text-[10px] font-mono text-[#a3a3a3]">{count} records</span>
+                  <span className="text-[10px] font-mono text-brand-text-muted">{count} records</span>
                   <input
                     type="checkbox"
                     className="hidden"
@@ -189,26 +189,26 @@ export default function ExportModal({ receiptCount, shipmentCount, onClose }: Pr
 
             {/* Date range */}
             <div>
-              <p className="text-[9px] font-mono uppercase tracking-[0.2em] text-[#a3a3a3] mb-3">
-                Date Range <span className="text-[#5a5a5a] normal-case tracking-normal">(optional)</span>
+              <p className="text-[9px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-3">
+                Date Range <span className="normal-case tracking-normal">(optional)</span>
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[8px] font-mono uppercase tracking-widest text-[#5a5a5a] mb-1">From</label>
+                  <label className="block text-[8px] font-mono uppercase tracking-widest text-brand-text-muted mb-1">From</label>
                   <input
                     type="date"
                     value={dateFrom}
                     onChange={e => setDateFrom(e.target.value)}
-                    className="w-full bg-[#0d0d0d] border border-[#262626] rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-[#00FF66]/50 transition-all"
+                    className="w-full bg-brand-card border border-brand-border rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
                   />
                 </div>
                 <div>
-                  <label className="block text-[8px] font-mono uppercase tracking-widest text-[#5a5a5a] mb-1">To</label>
+                  <label className="block text-[8px] font-mono uppercase tracking-widest text-brand-text-muted mb-1">To</label>
                   <input
                     type="date"
                     value={dateTo}
                     onChange={e => setDateTo(e.target.value)}
-                    className="w-full bg-[#0d0d0d] border border-[#262626] rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-[#00FF66]/50 transition-all"
+                    className="w-full bg-brand-card border border-brand-border rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
                   />
                 </div>
               </div>
@@ -223,14 +223,14 @@ export default function ExportModal({ receiptCount, shipmentCount, onClose }: Pr
             <div className="flex gap-3 pt-1">
               <button
                 onClick={onClose}
-                className="flex-1 py-3 rounded-2xl border border-[#262626] text-[#a3a3a3] font-mono text-[10px] uppercase tracking-widest hover:border-[#3a3a3a] hover:text-white transition-all"
+                className="flex-1 py-3 rounded-2xl border border-brand-border text-brand-text-muted font-mono text-[10px] uppercase tracking-widest hover:border-brand-text-muted hover:text-white transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleExport}
                 disabled={!includeReceipts && !includeShipments}
-                className="flex-1 py-3 rounded-2xl bg-[#00FF66] text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:scale-100 flex items-center justify-center gap-2"
+                className="flex-1 py-3 rounded-2xl bg-brand-accent text-black font-bold font-mono text-[10px] uppercase tracking-widest hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:scale-100 flex items-center justify-center gap-2"
               >
                 <Download className="w-3.5 h-3.5" />
                 Export

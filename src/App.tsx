@@ -46,7 +46,7 @@ type BulkResult = {
 function useTheme() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('theme');
-    return (saved === 'light' ? 'light' : 'dark') as 'dark' | 'light';
+    return (saved === 'dark' ? 'dark' : 'light') as 'dark' | 'light';
   });
 
   useEffect(() => {

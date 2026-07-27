@@ -4,6 +4,7 @@ import {
   TrendingUp, CheckCircle, AlertCircle, Loader2,
   Activity, FileText, BarChart3,
 } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from './supabase';
 import type { Shipment } from './ShipmentsPage';
 import type { Receipt } from './types';
@@ -72,6 +73,26 @@ function thisMonthRevenue(sales: Sale[]) {
     .reduce((s, r) => s + toTZS(r.amount, r.currency), 0);
 }
 
+function monthlySeries(receipts: Receipt[], sales: Sale[]) {
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    return { year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString('en-US', { month: 'short' }) };
+  });
+
+  return months.map(m => {
+    const inMonth = (dateStr: string) => {
+      try {
+        const d = new Date(dateStr);
+        return d.getFullYear() === m.year && d.getMonth() === m.month;
+      } catch { return false; }
+    };
+    const Expenses = receipts.filter(r => inMonth(r.date)).reduce((s, r) => s + toTZS(r.amount, r.currency), 0);
+    const Revenue = sales.filter(s => inMonth(s.date)).reduce((s, r) => s + toTZS(r.amount, r.currency), 0);
+    return { month: m.label, Revenue, Expenses };
+  });
+}
+
 export default function DashboardPage({
   receipts, sales, userName,
   onNewShipment, onAddReceipt, onGoToReceipts, onGoToShipments, onSelectShipment,
@@ -114,6 +135,7 @@ export default function DashboardPage({
     .slice(0, 5);
 
   const recentShipments = shipments.slice(0, 3);
+  const series = monthlySeries(receipts, sales);
 
   const stats = [
     {
@@ -156,21 +178,34 @@ export default function DashboardPage({
   return (
     <main className="w-full max-w-5xl mx-auto px-4 md:px-6 pt-8 pb-28 md:pb-10 space-y-8 overflow-x-hidden box-border">
 
-      {/* Welcome */}
-      <div>
-        <h2 className="text-2xl md:text-3xl font-bold uppercase tracking-tighter leading-none">
-          {greeting(userName)}
-        </h2>
-        <p className="text-[11px] font-mono text-brand-text-muted uppercase tracking-widest mt-1.5">
-          {todayLabel()}
-        </p>
+      {/* Hero greeting banner */}
+      <div className="rounded-3xl p-6 md:p-8 bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-lg relative overflow-hidden">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-2xl md:text-3xl font-bold uppercase tracking-tighter leading-none">
+              {greeting(userName)}
+            </h2>
+            <p className="text-[11px] font-mono text-white/80 uppercase tracking-widest mt-1.5">
+              {todayLabel()}
+            </p>
+          </div>
+          <div className="flex items-center gap-2.5 bg-white/15 backdrop-blur-sm rounded-2xl px-4 py-2.5 border border-white/20">
+            <div className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse flex-shrink-0" />
+            <div>
+              <div className="text-[8px] font-mono uppercase tracking-widest text-white/70 leading-none mb-0.5">Status</div>
+              <div className="text-xs font-bold uppercase tracking-tight leading-none">All Systems Active</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {stats.map(s => (
           <div key={s.label} className={`glass rounded-2xl p-4 border ${s.bg}`}>
-            <div className={`mb-3 ${s.color}`}>{s.icon}</div>
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 ${s.bg} ${s.color}`}>
+              {s.icon}
+            </div>
             <div className="text-lg md:text-xl font-bold font-mono tracking-tight leading-none mb-1">
               {s.value}
             </div>
@@ -179,6 +214,37 @@ export default function DashboardPage({
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Money overview chart */}
+      <div className="glass rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp className="w-4 h-4 text-brand-accent" />
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-brand-text-muted">Money Overview · Last 6 Months</span>
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={series} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
+                <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="expensesGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#EF4444" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#EF4444" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-brand-border)" vertical={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--color-brand-text-muted)' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: 'var(--color-brand-text-muted)' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}M`} />
+            <Tooltip
+              contentStyle={{ background: 'var(--color-brand-card)', border: '1px solid var(--color-brand-border)', borderRadius: 12, fontSize: 11 }}
+              formatter={(value: number) => `TSh ${value.toLocaleString()}`}
+            />
+            <Area type="monotone" dataKey="Revenue" stroke="#10B981" strokeWidth={2} fill="url(#revenueGradient)" />
+            <Area type="monotone" dataKey="Expenses" stroke="#EF4444" strokeWidth={2} fill="url(#expensesGradient)" />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Quick actions */}

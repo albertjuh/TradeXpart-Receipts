@@ -33,9 +33,9 @@ const INITIAL: FormData = {
 type ShipmentOption = { id: string; commodity: string | null; reference_number: string | null; type: string };
 
 const inputClass =
-  'w-full bg-[#0d0d0d] border border-[#1f1f1f] rounded-xl px-4 py-2.5 text-sm font-mono text-[#e5e7eb] placeholder-[#4b5563] focus:outline-none focus:border-[var(--color-brand-accent,#00ff66)]/50 focus:ring-2 focus:ring-[var(--color-brand-accent,#00ff66)]/10 transition-all';
+  'w-full bg-brand-card border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white placeholder-brand-text-muted focus:outline-none focus:border-brand-accent/50 focus:ring-2 focus:ring-brand-accent/10 transition-all';
 
-const labelClass = 'block text-[9px] font-mono uppercase tracking-[0.2em] text-[#6b7280] mb-1.5';
+const labelClass = 'block text-[9px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5';
 
 export default function CreateSaleModal({ onClose, onCreated }: Props) {
   const [form, setForm] = useState<FormData>(INITIAL);
@@ -91,19 +91,19 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-[#111111] border border-[#1f1f1f] rounded-3xl shadow-2xl">
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-brand-card border border-brand-border rounded-3xl shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-8 pt-8 pb-6 border-b border-[#1f1f1f]">
+        <div className="flex items-center justify-between px-8 pt-8 pb-6 border-b border-brand-border">
           <div>
-            <h2 className="text-xl font-bold uppercase tracking-tighter text-[#e5e7eb]">New Sale</h2>
-            <p className="text-[10px] font-mono text-[#6b7280] uppercase tracking-widest mt-1">
+            <h2 className="text-xl font-bold uppercase tracking-tighter text-white">New Sale</h2>
+            <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-1">
               Log a revenue / income entry
             </p>
           </div>
           {!submitting && (
             <button
               onClick={onClose}
-              className="p-2.5 rounded-xl text-[#6b7280] hover:text-[#e5e7eb] hover:bg-[#1f1f1f] transition-all"
+              className="p-2.5 rounded-xl text-brand-text-muted hover:text-white hover:bg-brand-border/60 transition-all"
             >
               <X className="w-5 h-5" />
             </button>
@@ -215,19 +215,19 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
           )}
 
           {/* Footer buttons */}
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-[#1f1f1f] mt-6">
+          <div className="flex items-center justify-end gap-3 pt-2 border-t border-brand-border mt-6">
             <button
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl text-[10px] font-mono uppercase tracking-widest text-[#6b7280] border border-[#1f1f1f] hover:border-[#374151] hover:text-[#e5e7eb] transition-all disabled:opacity-40"
+              className="px-6 py-2.5 rounded-xl text-[10px] font-mono uppercase tracking-widest text-brand-text-muted border border-brand-border hover:border-brand-text-muted hover:text-white transition-all disabled:opacity-40"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="px-6 py-2.5 rounded-xl text-[10px] font-mono uppercase tracking-widest bg-[var(--color-brand-accent,#00ff66)] text-black font-bold hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:scale-100 flex items-center gap-2"
+              className="px-6 py-2.5 rounded-xl text-[10px] font-mono uppercase tracking-widest bg-brand-accent text-black font-bold hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:scale-100 flex items-center gap-2"
             >
               {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
               Log Sale
