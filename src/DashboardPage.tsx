@@ -49,6 +49,12 @@ function todayLabel() {
   return new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+function safeDateMs(d: string | null | undefined): number {
+  if (!d) return 0;
+  const t = new Date(d).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 function thisMonthTotal(receipts: Receipt[]) {
   const now = new Date();
   return receipts
@@ -131,7 +137,7 @@ export default function DashboardPage({
   const monthRevenue = thisMonthRevenue(sales);
 
   const recentReceipts = [...receipts]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .sort((a, b) => safeDateMs(b.date) - safeDateMs(a.date))
     .slice(0, 5);
 
   const recentShipments = shipments.slice(0, 3);

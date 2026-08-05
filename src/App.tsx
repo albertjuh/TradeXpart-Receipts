@@ -36,9 +36,19 @@ type ParsedItem = {
 type ChatPhase = 'account_type' | 'category' | 'shipment' | 'confirm';
 type ChatMessage = { role: 'ai' | 'user'; text: string };
 type ModalShipment = { id: string; commodity: string; reference_number: string; type: string };
+// Missing/unparseable dates sort as oldest (0) instead of NaN, which the
+// Array.sort spec treats as "equal" and produces unstable, randomly-mixed
+// ordering relative to properly-dated rows.
+function safeDateMs(d: string | null | undefined): number {
+  if (!d) return 0;
+  const t = new Date(d).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
 type BulkResult = {
   vendor: string; amount: number; currency: string; date: string | null;
   category: string; payment_method: string | null; notes: string | null;
+  account_type?: string;
   error?: boolean;
   duplicate?: boolean;
 };
@@ -96,6 +106,7 @@ export default function App() {
   const [typeText, setTypeText] = useState('');
   const [parsedItems, setParsedItems] = useState<ParsedItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [typeParseAccountType, setTypeParseAccountType] = useState<Receipt['account_type']>('Business');
   const [isSavingAll, setIsSavingAll] = useState(false);
 
   // Chat step state
@@ -146,9 +157,26 @@ export default function App() {
     try {
       console.log('Fetching receipts...');
       setReceiptsError(null);
-      const { data, error } = await supabase.from('receipts').select('*').order('created_at', { ascending: false });
-      console.log('Receipts result:', data, error);
-      if (error) throw error;
+      // Supabase/PostgREST caps a single request at its configured max-rows
+      // (commonly 1000) — page through in batches so the list is never
+      // silently truncated once the table grows past that.
+      const PAGE_SIZE = 1000;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let allRows: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('receipts')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        allRows = allRows.concat(data ?? []);
+        if (!data || data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      const data = allRows;
+      console.log('Receipts result:', data.length, 'rows');
       setReceipts((data ?? []).map((row) => ({
         id: row.id ?? '',
         date: row.date ?? '',
@@ -246,7 +274,13 @@ export default function App() {
         payment_method: data.payment_method ?? null, notes: data.notes ?? null,
         status: 'logged', user_id: null, submitted_by: fullName,
       });
-      if (!insertError) { await fetchReceipts(); setIsAdding(false); }
+      if (!insertError) {
+        await fetchReceipts();
+        setIsAdding(false);
+      } else {
+        console.error('Insert error', insertError);
+        alert(`Failed to save receipt: ${insertError.message}`);
+      }
     } catch (error) {
       console.error('OCR Error', error);
       alert('Failed to process receipt. Please try again.');
@@ -620,9 +654,11 @@ export default function App() {
         resetOcr();
       } else {
         console.error('OCR submit error', error);
+        alert(`Failed to save receipt: ${error.message}`);
       }
     } catch (err) {
       console.error('OCR submit error', err);
+      alert('Failed to save receipt. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -686,7 +722,7 @@ export default function App() {
         date:           item.date ?? null,
         time:           '',
         category:       item.category ?? 'Other',
-        account_type:   'Unknown',
+        account_type:   item.account_type ?? typeParseAccountType,
         payment_method: item.payment_method ?? null,
         notes:          item.notes ?? null,
         status:         'logged',
@@ -698,9 +734,13 @@ export default function App() {
         await fetchReceipts();
         setIsAdding(false);
         resetOcr();
+      } else {
+        console.error('Save all error', error);
+        alert(`Failed to save receipts: ${error.message}`);
       }
     } catch (err) {
       console.error('Save all error', err);
+      alert('Failed to save receipts. Please try again.');
     } finally {
       setIsSavingAll(false);
     }
@@ -760,7 +800,7 @@ export default function App() {
       const rows = toSave.map(item => ({
         vendor: item.vendor || '', amount: item.amount || 0, currency: item.currency || 'TZS',
         date: item.date || null, time: '', category: item.category || 'Other',
-        account_type: 'Business' as Receipt['account_type'],
+        account_type: (item.account_type || 'Business') as Receipt['account_type'],
         payment_method: item.payment_method || null, notes: item.notes || null,
         status: 'complete' as Receipt['status'], user_id: null, submitted_by: fullName,
       }));
@@ -772,9 +812,11 @@ export default function App() {
         setTimeout(() => { setIsAdding(false); resetOcr(); }, 2000);
       } else {
         console.error('Bulk save error', error);
+        alert(`Failed to save receipts: ${error.message}`);
       }
     } catch (err) {
       console.error('Bulk save error', err);
+      alert('Failed to save receipts. Please try again.');
     } finally {
       setBulkSaving(false);
     }
@@ -789,6 +831,7 @@ export default function App() {
       currency:       ocrFields.currency        || item.currency,
       date:           ocrFields.date            || item.date,
       category:       ocrFields.category        || item.category,
+      account_type:   ocrFields.account_type    || item.account_type,
       payment_method: ocrFields.payment_method  || item.payment_method,
       notes:          ocrFields.notes           || item.notes,
       error:          false,
@@ -860,6 +903,7 @@ export default function App() {
           vendor:         editForm.vendor,
           amount:         editForm.amount,
           currency:       editForm.currency,
+          date:           editForm.date,
           category:       editForm.category,
           account_type:   editForm.account_type,
           payment_method: editForm.payment_method || null,
@@ -918,7 +962,7 @@ export default function App() {
         }
         return matchesSearch && matchesCategory && matchesDate;
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .sort((a, b) => safeDateMs(b.date) - safeDateMs(a.date));
   }, [receipts, search, filterCategory, dateRange]);
 
   useEffect(() => { setVisibleCount(8); }, [search, filterCategory, dateRange]);
@@ -1826,6 +1870,16 @@ export default function App() {
                         {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
+                    <div>
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Account Type</label>
+                      <select value={ocrFields.account_type || 'Business'}
+                        onChange={e => setOcrFields(f => f ? { ...f, account_type: e.target.value } : f)}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all">
+                        <option value="Business">Business</option>
+                        <option value="Personal">Personal</option>
+                        <option value="Unknown">Unknown</option>
+                      </select>
+                    </div>
                     <div className="col-span-2">
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Payment Method</label>
                       <select value={ocrFields.payment_method}
@@ -1887,6 +1941,21 @@ export default function App() {
                     >
                       {selectedItems.size === parsedItems.length ? 'Deselect All' : 'Select All'}
                     </button>
+                  </div>
+
+                  <div>
+                    <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">
+                      Account Type (applies to all selected)
+                    </label>
+                    <select
+                      value={typeParseAccountType}
+                      onChange={e => setTypeParseAccountType(e.target.value as Receipt['account_type'])}
+                      className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all"
+                    >
+                      <option value="Business">Business</option>
+                      <option value="Personal">Personal</option>
+                      <option value="Unknown">Unknown</option>
+                    </select>
                   </div>
 
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
@@ -2277,7 +2346,7 @@ export default function App() {
                                         category:       bulkResults[i].category,
                                         payment_method: bulkResults[i].payment_method ?? '',
                                         notes:          bulkResults[i].notes ?? '',
-                                        account_type:   'Business',
+                                        account_type:   bulkResults[i].account_type ?? 'Business',
                                       });
                                     }}
                                     className="p-1.5 rounded-lg text-brand-text-muted hover:text-brand-accent hover:bg-brand-accent/10 transition-all flex-shrink-0">
@@ -2358,6 +2427,11 @@ export default function App() {
                     <div>
                       <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Currency</label>
                       <input type="text" value={editForm.currency ?? 'TSh'} onChange={e => setEditForm(f => ({ ...f, currency: e.target.value }))}
+                        className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5">Date</label>
+                      <input type="date" value={editForm.date ?? ''} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))}
                         className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-brand-accent/50 transition-all" />
                     </div>
                     <div>
@@ -2547,6 +2621,7 @@ export default function App() {
                         vendor: selectedReceipt.vendor,
                         amount: selectedReceipt.amount,
                         currency: selectedReceipt.currency,
+                        date: selectedReceipt.date,
                         category: selectedReceipt.category,
                         account_type: selectedReceipt.account_type,
                         payment_method: selectedReceipt.payment_method ?? '',
