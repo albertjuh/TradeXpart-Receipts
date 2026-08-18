@@ -951,13 +951,21 @@ export default function App() {
           r.category === filterCategory;
         let matchesDate = true;
         if (dateRange !== 'All') {
-          const date = parseISO(r.date);
-          const now = new Date();
-          if (dateRange === 'This Month') {
-            matchesDate = isWithinInterval(date, { start: startOfMonth(now), end: endOfMonth(now) });
-          } else if (dateRange === 'Last Month') {
-            const lastMonth = subMonths(now, 1);
-            matchesDate = isWithinInterval(date, { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) });
+          const date = r.date ? parseISO(r.date) : null;
+          if (!date || Number.isNaN(date.getTime())) {
+            // Receipts with no/invalid date have nowhere to "belong" in a
+            // month filter — never hide them, so they can't silently
+            // disappear. They stay visible (and sort to the bottom) until
+            // someone fills in the date.
+            matchesDate = true;
+          } else {
+            const now = new Date();
+            if (dateRange === 'This Month') {
+              matchesDate = isWithinInterval(date, { start: startOfMonth(now), end: endOfMonth(now) });
+            } else if (dateRange === 'Last Month') {
+              const lastMonth = subMonths(now, 1);
+              matchesDate = isWithinInterval(date, { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth) });
+            }
           }
         }
         return matchesSearch && matchesCategory && matchesDate;
