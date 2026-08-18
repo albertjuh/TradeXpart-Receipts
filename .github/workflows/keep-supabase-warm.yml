@@ -1,0 +1,22 @@
+name: Keep Supabase warm
+
+# Free-tier Supabase projects auto-pause after a period of inactivity,
+# which causes real save/read failures in the app during the pause and
+# the brief wake-up window afterward. This pings the REST API on a
+# schedule so the project never goes idle long enough to trigger that.
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # every 6 hours
+  workflow_dispatch: {}     # allows a manual "Run workflow" click too
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+            "https://bdnwexluvzbwawypkiqp.supabase.co/rest/v1/receipts?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
