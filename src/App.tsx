@@ -1092,7 +1092,7 @@ export default function App() {
   }
 
   return (
-    <div className="relative w-full max-w-[100vw] overflow-x-hidden min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
+    <div className="relative w-full max-w-[100vw] min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
 
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b border-brand-border px-4 md:px-6 h-16 md:h-20 flex items-center justify-between w-full max-w-[100vw] overflow-hidden">
