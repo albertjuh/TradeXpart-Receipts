@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2 } from 'lucide-react';
-import { supabase } from '../supabase';
+import { X, Loader2, Paperclip } from 'lucide-react';
+import { supabase, uploadFile } from '../supabase';
 import { EXCHANGE_RATES } from '../currency';
 
 type Props = {
@@ -42,6 +42,7 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shipments, setShipments] = useState<ShipmentOption[]>([]);
+  const [attachFile, setAttachFile] = useState<File | null>(null);
 
   useEffect(() => {
     supabase.from('shipments').select('id, commodity, reference_number, type')
@@ -60,6 +61,21 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
     setSubmitting(true);
     setError(null);
 
+    let attachment_path: string | null = null;
+    try {
+      if (attachFile) {
+        const safeName = attachFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const path = `sales/${Date.now()}_${safeName}`;
+        await uploadFile('documents', path, attachFile);
+        attachment_path = path;
+      }
+    } catch (uploadErr) {
+      console.error('Attachment upload failed', uploadErr);
+      setError('Failed to upload attachment. Please try again.');
+      setSubmitting(false);
+      return;
+    }
+
     const payload = {
       date: form.date,
       customer: form.customer.trim() || null,
@@ -69,6 +85,7 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
       payment_status: form.payment_status,
       payment_method: form.payment_method.trim() || null,
       notes: form.notes.trim() || null,
+      attachment_path,
       created_by: null,
     };
 
@@ -195,6 +212,21 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
                 className={inputClass}
               />
             </div>
+          </div>
+
+          {/* Attachment — full width */}
+          <div>
+            <label className={labelClass}>Attachment (payment proof, optional)</label>
+            <label className={`${inputClass} flex items-center gap-2 cursor-pointer`}>
+              <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">{attachFile ? attachFile.name : 'Choose a file…'}</span>
+              <input
+                type="file"
+                accept="image/*,.pdf"
+                className="hidden"
+                onChange={e => setAttachFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
           </div>
 
           {/* Notes — full width */}

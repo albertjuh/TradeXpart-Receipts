@@ -6,12 +6,13 @@ import {
   ChevronRight, ArrowUpRight,
   Activity, Layers, Wallet, Package, Pencil, Check,
   Sun, Moon, LayoutDashboard, Download, Tag, TrendingUp, LogOut, Users,
+  Paperclip, Eye,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { Receipt, CATEGORIES } from './types';
 import { toTZS, isForeignCurrency } from './currency';
-import { supabase } from './supabase';
+import { supabase, uploadFile, getFileUrl } from './supabase';
 import Login from './Login';
 import ShipmentsPage from './ShipmentsPage';
 import ShipmentDetailPage from './ShipmentDetailPage';
@@ -94,6 +95,8 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<Receipt>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [attachingFile, setAttachingFile] = useState(false);
+  const attachFileInputRef = useRef<HTMLInputElement>(null);
 
   // OCR scan state (Anthropic)
   const [ocrPreview, setOcrPreview] = useState<string | null>(null);
@@ -190,6 +193,7 @@ export default function App() {
         submitted_by: row.submitted_by ?? undefined,
         status: (row.status ?? 'logged') as Receipt['status'],
         notes: row.notes ?? undefined,
+        attachment_path: row.attachment_path ?? null,
       })));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -938,6 +942,27 @@ export default function App() {
       } catch (e) {
         console.error('Failed to delete receipt', e);
       }
+    }
+  };
+
+  const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !selectedReceipt) return;
+    setAttachingFile(true);
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `receipts/${selectedReceipt.id}/${Date.now()}_${safeName}`;
+      await uploadFile('documents', path, file);
+      const { error } = await supabase.from('receipts').update({ attachment_path: path }).eq('id', selectedReceipt.id);
+      if (error) throw error;
+      setReceipts(prev => prev.map(r => r.id === selectedReceipt.id ? { ...r, attachment_path: path } : r));
+      setSelectedReceipt(prev => prev ? { ...prev, attachment_path: path } : null);
+    } catch (err) {
+      console.error('Attach file error', err);
+      alert('Failed to attach file. Please try again.');
+    } finally {
+      setAttachingFile(false);
     }
   };
 
@@ -2621,6 +2646,36 @@ export default function App() {
                   </svg>
                 </div>
 
+                {/* Attachment row */}
+                <input
+                  ref={attachFileInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={handleAttachFile}
+                />
+                <div className="flex gap-3 mt-5">
+                  {selectedReceipt.attachment_path && (
+                    <a
+                      href={getFileUrl('documents', selectedReceipt.attachment_path)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-5 py-2.5 rounded-full bg-brand-accent/10 text-brand-accent border border-brand-accent/30 font-mono text-[10px] uppercase tracking-widest hover:bg-brand-accent/20 transition-all flex items-center gap-1.5"
+                    >
+                      <Eye className="w-3 h-3" />
+                      View Attachment
+                    </a>
+                  )}
+                  <button
+                    onClick={() => attachFileInputRef.current?.click()}
+                    disabled={attachingFile}
+                    className="px-5 py-2.5 rounded-full bg-white text-black border border-white font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-white/90 transition-all flex items-center gap-1.5 disabled:opacity-40"
+                  >
+                    {attachingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Paperclip className="w-3 h-3" />}
+                    {selectedReceipt.attachment_path ? 'Replace File' : 'Attach File'}
+                  </button>
+                </div>
+
                 {/* Action buttons */}
                 <div className="flex gap-3 mt-5">
                   <button
@@ -2637,21 +2692,21 @@ export default function App() {
                       });
                       setIsEditing(true);
                     }}
-                    className="px-5 py-2.5 rounded-full bg-white/10 text-white border border-white/20 font-mono text-[10px] uppercase tracking-widest hover:bg-white/20 transition-all flex items-center gap-1.5"
+                    className="px-5 py-2.5 rounded-full bg-white text-black border border-white font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-white/90 transition-all flex items-center gap-1.5"
                   >
                     <Pencil className="w-3 h-3" />
                     EDIT
                   </button>
                   <button
                     onClick={() => deleteReceipt(selectedReceipt.id)}
-                    className="px-5 py-2.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-mono text-[10px] uppercase tracking-widest hover:bg-red-500/30 transition-all flex items-center gap-1.5"
+                    className="px-5 py-2.5 rounded-full bg-red-500 text-white border border-red-500 font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-red-600 transition-all flex items-center gap-1.5"
                   >
                     <Trash2 className="w-3 h-3" />
                     DELETE
                   </button>
                   <button
                     onClick={() => { setSelectedReceipt(null); setIsEditing(false); }}
-                    className="px-5 py-2.5 rounded-full bg-white/5 text-white/50 border border-white/10 font-mono text-[10px] uppercase tracking-widest hover:bg-white/10 hover:text-white/80 transition-all"
+                    className="px-5 py-2.5 rounded-full bg-transparent text-white border border-white/40 font-mono text-[10px] uppercase tracking-widest hover:bg-white/10 hover:border-white/60 transition-all"
                   >
                     CLOSE
                   </button>

@@ -11,6 +11,7 @@ export interface Receipt {
   submitted_by?: string;
   status: 'logged' | 'pending' | 'complete';
   notes?: string;
+  attachment_path?: string | null;
 }
 
 export const CATEGORIES = [

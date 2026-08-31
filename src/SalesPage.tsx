@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Loader2, TrendingUp, DollarSign, Users } from 'lucide-react';
-import { supabase } from './supabase';
+import { Plus, Loader2, TrendingUp, DollarSign, Users, Eye } from 'lucide-react';
+import { supabase, getFileUrl } from './supabase';
 import CreateSaleModal from './components/CreateSaleModal';
 
 export type Sale = {
@@ -13,6 +13,7 @@ export type Sale = {
   payment_status: 'unpaid' | 'partial' | 'paid';
   payment_method: string | null;
   notes: string | null;
+  attachment_path: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -199,7 +200,7 @@ export default function SalesPage({
           <table className="w-full">
             <thead>
               <tr className="border-b border-brand-border">
-                {['Date', 'Customer', 'Amount', 'Linked Shipment', 'Payment'].map(h => (
+                {['Date', 'Customer', 'Amount', 'Linked Shipment', 'Payment', 'File'].map(h => (
                   <th
                     key={h}
                     className="px-5 py-3.5 text-left text-[9px] font-mono uppercase tracking-[0.2em] text-brand-text-muted"
@@ -229,6 +230,22 @@ export default function SalesPage({
                       <span className={`px-2.5 py-1 rounded-lg text-[9px] font-mono font-bold border ${PAYMENT_STYLES[s.payment_status] ?? PAYMENT_STYLES.unpaid}`}>
                         {PAYMENT_LABELS[s.payment_status] ?? s.payment_status.toUpperCase()}
                       </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      {s.attachment_path ? (
+                        <a
+                          href={getFileUrl('documents', s.attachment_path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="text-brand-accent hover:opacity-70 transition-opacity"
+                          title="View attachment"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </a>
+                      ) : (
+                        <span className="text-brand-text-muted">—</span>
+                      )}
                     </td>
                   </tr>
                 );
