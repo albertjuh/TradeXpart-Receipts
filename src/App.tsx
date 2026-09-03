@@ -1118,7 +1118,7 @@ export default function App() {
   }
 
   return (
-    <div className="relative w-full max-w-[100vw] min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
+    <div className="relative z-0 w-full max-w-[100vw] min-h-screen text-white font-sans selection:bg-brand-accent selection:text-black">
 
       {theme === 'light' && (
         <div
