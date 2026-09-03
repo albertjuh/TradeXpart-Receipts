@@ -20,6 +20,7 @@ import DashboardPage from './DashboardPage';
 import SalesPage, { type Sale } from './SalesPage';
 import ClientsPage from './ClientsPage';
 import ExportModal from './components/ExportModal';
+import tradexpartBg from './tradexpartbg.jpg';
 
 type Page = 'dashboard' | 'receipts' | 'shipments' | 'sales' | 'clients';
 
@@ -1119,87 +1120,104 @@ export default function App() {
   return (
     <div className="relative w-full max-w-[100vw] min-h-screen bg-brand-bg text-white font-sans selection:bg-brand-accent selection:text-black">
 
+      {theme === 'light' && (
+        <div
+          className="fixed inset-0 -z-10 opacity-[0.16] pointer-events-none"
+          style={{
+            backgroundImage: `url(${tradexpartBg})`,
+            backgroundRepeat: 'repeat',
+            backgroundSize: '440px auto',
+          }}
+        />
+      )}
+
       {/* Header */}
-      <header className="sticky top-0 z-40 glass border-b border-brand-border px-4 md:px-6 h-16 md:h-20 flex items-center justify-between w-full max-w-[100vw] overflow-hidden">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 md:w-10 md:h-10 bg-brand-accent rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(0,255,102,0.3)]">
-            <Layers className="text-black w-5 h-5 md:w-6 md:h-6" />
+      <header className="sticky top-0 z-40 glass border-b border-brand-border w-full max-w-[100vw] overflow-hidden">
+        {/* Row 1 — brand + account */}
+        <div className="px-4 md:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 md:w-10 md:h-10 bg-brand-accent rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(0,255,102,0.3)]">
+              <Layers className="text-black w-5 h-5 md:w-6 md:h-6" />
+            </div>
+            <div>
+              <h1 className="text-lg md:text-xl font-bold tracking-tight leading-none uppercase">tradexparts</h1>
+              <span className="text-[9px] font-mono text-brand-accent tracking-widest uppercase hidden md:block">v1.0.0 // AI-POWERED</span>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg md:text-xl font-bold tracking-tight leading-none uppercase">tradexparts</h1>
-            <span className="text-[9px] font-mono text-brand-accent tracking-widest uppercase hidden md:block">v1.0.0 // AI-POWERED</span>
+
+          <div className="flex items-center gap-2 md:gap-3">
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-accent hover:border-brand-accent/40 transition-all"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
+            <div className="flex items-center gap-2.5 pl-2 md:pl-3 md:border-l border-brand-border">
+              <div className="w-8 h-8 rounded-full bg-brand-card border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent uppercase">
+                {fullName.charAt(0)}
+              </div>
+              <span className="hidden md:block text-[10px] font-mono text-brand-text-muted uppercase tracking-widest max-w-[100px] truncate">
+                {fullName}
+              </span>
+            </div>
+
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="p-2 rounded-xl border border-brand-border text-brand-text-muted hover:text-red-400 hover:border-red-400/40 transition-all"
+              title="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-1 p-1 bg-brand-bg rounded-xl border border-brand-border">
-          {NAV_ITEMS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => { setCurrentPage(key); if (key === 'shipments') setSelectedShipmentId(null); }}
-              className={`px-4 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-widest transition-all ${
-                currentPage === key
-                  ? 'bg-brand-accent text-black font-bold'
-                  : 'text-brand-text-muted hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        {/* Row 2 — navigation + workspace actions (desktop only; mobile uses the bottom nav) */}
+        <div className="hidden md:flex items-center justify-between px-4 md:px-6 h-14 border-t border-brand-border">
+          <nav className="flex items-center gap-1 p-1 bg-brand-bg rounded-xl border border-brand-border">
+            {NAV_ITEMS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => { setCurrentPage(key); if (key === 'shipments') setSelectedShipmentId(null); }}
+                className={`px-4 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-widest transition-all ${
+                  currentPage === key
+                    ? 'bg-brand-accent text-black font-bold'
+                    : 'text-brand-text-muted hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
 
-        <div className="flex items-center gap-2 md:gap-4">
-          {/* Theme toggle */}
-          <button
-            onClick={toggleTheme}
-            className="p-2 rounded-xl border border-brand-border text-brand-text-muted hover:text-brand-accent hover:border-brand-accent/40 transition-all"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="p-2 rounded-xl border border-brand-border text-brand-text-muted hover:text-red-400 hover:border-red-400/40 transition-all"
-            title="Sign out"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
-            <div className="w-1.5 h-1.5 bg-brand-accent rounded-full animate-pulse" />
-            <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-tighter">Cloud Sync</span>
-          </div>
-
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
-            <span className="text-[10px] font-mono text-brand-accent uppercase tracking-tighter">
-              {profile?.role === 'admin' ? 'Admin' : 'Accountant'}
-            </span>
-          </div>
-
-<button
-            onClick={() => setShowExport(true)}
-            className="hidden md:flex border border-brand-border text-brand-text-muted px-4 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:border-brand-accent/40 hover:text-brand-accent transition-all active:scale-95"
-          >
-            <Download className="w-4 h-4" />
-            EXPORT
-          </button>
-
-          <button
-            onClick={() => setIsAdding(true)}
-            className="hidden md:flex bg-brand-accent text-black px-5 py-2.5 rounded-full text-sm font-bold items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
-          >
-            <Plus className="w-4 h-4" />
-            ADD RECEIPT
-          </button>
-
-          <div className="flex items-center gap-3 pl-3 border-l border-brand-border">
-            <div className="w-8 h-8 rounded-full bg-brand-card border border-brand-border flex items-center justify-center text-xs font-bold text-brand-accent uppercase">
-              {fullName.charAt(0)}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
+              <div className="w-1.5 h-1.5 bg-brand-accent rounded-full animate-pulse" />
+              <span className="text-[10px] font-mono text-brand-text-muted uppercase tracking-tighter">Cloud Sync</span>
             </div>
-            <span className="hidden md:block text-[10px] font-mono text-brand-text-muted uppercase tracking-widest max-w-[100px] truncate">
-              {fullName}
-            </span>
+
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-border/50 rounded-lg border border-brand-border">
+              <span className="text-[10px] font-mono text-brand-accent uppercase tracking-tighter">
+                {profile?.role === 'admin' ? 'Admin' : 'Accountant'}
+              </span>
+            </div>
+
+            <button
+              onClick={() => setShowExport(true)}
+              className="border border-brand-border text-brand-text-muted px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 hover:border-brand-accent/40 hover:text-brand-accent transition-all active:scale-95"
+            >
+              <Download className="w-4 h-4" />
+              EXPORT
+            </button>
+
+            <button
+              onClick={() => setIsAdding(true)}
+              className="bg-brand-accent text-black px-5 py-2 rounded-full text-sm font-bold flex items-center gap-2 hover:scale-105 transition-all active:scale-95 shadow-[0_0_30px_rgba(0,255,102,0.2)]"
+            >
+              <Plus className="w-4 h-4" />
+              ADD RECEIPT
+            </button>
           </div>
         </div>
       </header>

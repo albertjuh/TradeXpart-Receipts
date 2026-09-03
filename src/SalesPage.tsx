@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Loader2, TrendingUp, DollarSign, Users, Eye } from 'lucide-react';
+import { Plus, Loader2, TrendingUp, DollarSign, Users, Eye, Pencil, Trash2 } from 'lucide-react';
 import { supabase, getFileUrl } from './supabase';
 import CreateSaleModal from './components/CreateSaleModal';
 
@@ -50,6 +50,7 @@ export default function SalesPage({
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [shipmentsById, setShipmentsById] = useState<Record<string, LinkedShipment>>({});
 
   useEffect(() => {
@@ -71,6 +72,15 @@ export default function SalesPage({
   };
 
   useEffect(() => { fetchSales(); }, []);
+
+  const deleteSale = async (id: string) => {
+    if (!confirm('Delete this sale record? This cannot be undone.')) return;
+    const { error } = await supabase.from('sales').delete().eq('id', id);
+    if (!error) {
+      setSales(prev => prev.filter(s => s.id !== id));
+      onSaleLogged?.();
+    }
+  };
 
   useEffect(() => {
     supabase.from('shipments').select('id, commodity, reference_number').then(({ data }) => {
@@ -200,7 +210,7 @@ export default function SalesPage({
           <table className="w-full">
             <thead>
               <tr className="border-b border-brand-border">
-                {['Date', 'Customer', 'Amount', 'Linked Shipment', 'Payment', 'File'].map(h => (
+                {['Date', 'Customer', 'Amount', 'Linked Shipment', 'Payment', 'File', 'Actions'].map(h => (
                   <th
                     key={h}
                     className="px-5 py-3.5 text-left text-[9px] font-mono uppercase tracking-[0.2em] text-brand-text-muted"
@@ -247,6 +257,24 @@ export default function SalesPage({
                         <span className="text-brand-text-muted">—</span>
                       )}
                     </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setEditingSale(s)}
+                          className="text-brand-text-muted hover:text-brand-accent transition-colors"
+                          title="Edit sale"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => deleteSale(s.id)}
+                          className="text-brand-text-muted hover:text-red-400 transition-colors"
+                          title="Delete sale"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -259,6 +287,14 @@ export default function SalesPage({
         <CreateSaleModal
           onClose={() => setIsModalOpen(false)}
           onCreated={() => { setIsModalOpen(false); fetchSales(); onSaleLogged?.(); }}
+        />
+      )}
+
+      {editingSale && (
+        <CreateSaleModal
+          editingSale={editingSale}
+          onClose={() => setEditingSale(null)}
+          onCreated={() => { setEditingSale(null); fetchSales(); onSaleLogged?.(); }}
         />
       )}
     </main>

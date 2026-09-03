@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Loader2, Paperclip } from 'lucide-react';
 import { supabase, uploadFile } from '../supabase';
 import { EXCHANGE_RATES } from '../currency';
+import type { Sale } from '../SalesPage';
 
 type Props = {
   onClose: () => void;
   onCreated: () => void;
+  editingSale?: Sale;
 };
 
 type FormData = {
@@ -37,8 +39,18 @@ const inputClass =
 
 const labelClass = 'block text-[9px] font-mono uppercase tracking-[0.2em] text-brand-text-muted mb-1.5';
 
-export default function CreateSaleModal({ onClose, onCreated }: Props) {
-  const [form, setForm] = useState<FormData>(INITIAL);
+export default function CreateSaleModal({ onClose, onCreated, editingSale }: Props) {
+  const isEditing = !!editingSale;
+  const [form, setForm] = useState<FormData>(() => editingSale ? {
+    date: editingSale.date,
+    customer: editingSale.customer ?? '',
+    amount: String(editingSale.amount),
+    currency: editingSale.currency,
+    shipment_id: editingSale.shipment_id ?? '',
+    payment_status: editingSale.payment_status,
+    payment_method: editingSale.payment_method ?? '',
+    notes: editingSale.notes ?? '',
+  } : INITIAL);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shipments, setShipments] = useState<ShipmentOption[]>([]);
@@ -61,7 +73,7 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
     setSubmitting(true);
     setError(null);
 
-    let attachment_path: string | null = null;
+    let attachment_path: string | null = editingSale?.attachment_path ?? null;
     try {
       if (attachFile) {
         const safeName = attachFile.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -86,10 +98,11 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
       payment_method: form.payment_method.trim() || null,
       notes: form.notes.trim() || null,
       attachment_path,
-      created_by: null,
     };
 
-    const { error: dbError } = await supabase.from('sales').insert(payload);
+    const { error: dbError } = isEditing
+      ? await supabase.from('sales').update(payload).eq('id', editingSale.id)
+      : await supabase.from('sales').insert({ ...payload, created_by: null });
 
     if (dbError) {
       setError(dbError.message);
@@ -112,9 +125,9 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-8 pt-8 pb-6 border-b border-brand-border">
           <div>
-            <h2 className="text-xl font-bold uppercase tracking-tighter text-white">New Sale</h2>
+            <h2 className="text-xl font-bold uppercase tracking-tighter text-white">{isEditing ? 'Edit Sale' : 'New Sale'}</h2>
             <p className="text-[10px] font-mono text-brand-text-muted uppercase tracking-widest mt-1">
-              Log a revenue / income entry
+              {isEditing ? 'Update a revenue / income entry' : 'Log a revenue / income entry'}
             </p>
           </div>
           {!submitting && (
@@ -219,7 +232,9 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
             <label className={labelClass}>Attachment (payment proof, optional)</label>
             <label className={`${inputClass} flex items-center gap-2 cursor-pointer`}>
               <Paperclip className="w-3.5 h-3.5 flex-shrink-0" />
-              <span className="truncate">{attachFile ? attachFile.name : 'Choose a file…'}</span>
+              <span className="truncate">
+                {attachFile ? attachFile.name : editingSale?.attachment_path ? 'Replace existing file…' : 'Choose a file…'}
+              </span>
               <input
                 type="file"
                 accept="image/*,.pdf"
@@ -262,7 +277,7 @@ export default function CreateSaleModal({ onClose, onCreated }: Props) {
               className="px-6 py-2.5 rounded-xl text-[10px] font-mono uppercase tracking-widest bg-brand-accent text-black font-bold hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:scale-100 flex items-center gap-2"
             >
               {submitting && <Loader2 className="w-3 h-3 animate-spin" />}
-              Log Sale
+              {isEditing ? 'Save Changes' : 'Log Sale'}
             </button>
           </div>
         </form>
