@@ -147,7 +147,8 @@ export default function ShipmentsPage({ forceOpenModal = false, onForceOpenModal
         </div>
       ) : (
         <div className="glass rounded-2xl overflow-hidden">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-brand-border">
                 {['Type', 'Commodity', 'Route', 'Party', 'Year', 'Status'].map(h => (
@@ -223,6 +224,7 @@ export default function ShipmentsPage({ forceOpenModal = false, onForceOpenModal
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

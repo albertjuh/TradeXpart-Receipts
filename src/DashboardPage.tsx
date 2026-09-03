@@ -208,11 +208,11 @@ export default function DashboardPage({
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {stats.map(s => (
-          <div key={s.label} className={`glass rounded-2xl p-4 border ${s.bg}`}>
+          <div key={s.label} className={`glass rounded-2xl p-4 border min-w-0 ${s.bg}`}>
             <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-3 ${s.bg} ${s.color}`}>
               {s.icon}
             </div>
-            <div className="text-lg md:text-xl font-bold font-mono tracking-tight leading-none mb-1">
+            <div className="text-sm sm:text-base md:text-xl font-bold font-mono tracking-tight leading-tight mb-1 break-words">
               {s.value}
             </div>
             <div className="text-[9px] font-mono uppercase tracking-[0.15em] text-brand-text-muted leading-snug">

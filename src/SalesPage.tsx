@@ -134,9 +134,9 @@ export default function SalesPage({
             </div>
             <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Total Revenue</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-mono text-brand-accent">TSh</span>
-            <span className="text-6xl font-bold tracking-tighter tabular-nums">
+          <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+            <span className="text-base md:text-2xl font-mono text-brand-accent">TSh</span>
+            <span className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter tabular-nums break-all">
               {totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
@@ -155,9 +155,9 @@ export default function SalesPage({
             </div>
             <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Net Profit</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className={`text-2xl font-mono ${netProfit >= 0 ? 'text-brand-accent' : 'text-red-400'}`}>TSh</span>
-            <span className={`text-6xl font-bold tracking-tighter tabular-nums ${netProfit >= 0 ? 'text-white' : 'text-red-400'}`}>
+          <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+            <span className={`text-base md:text-2xl font-mono ${netProfit >= 0 ? 'text-brand-accent' : 'text-red-400'}`}>TSh</span>
+            <span className={`text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter tabular-nums break-all ${netProfit >= 0 ? 'text-white' : 'text-red-400'}`}>
               {netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
@@ -207,7 +207,8 @@ export default function SalesPage({
         </div>
       ) : (
         <div className="glass rounded-2xl overflow-hidden">
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px]">
             <thead>
               <tr className="border-b border-brand-border">
                 {['Date', 'Customer', 'Amount', 'Linked Shipment', 'Payment', 'File', 'Actions'].map(h => (
@@ -280,6 +281,7 @@ export default function SalesPage({
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

@@ -1312,9 +1312,9 @@ export default function App() {
                 </div>
                 <Activity className="w-4 h-4 text-brand-text-muted" />
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-mono text-brand-accent">TSh</span>
-                <span className="text-7xl font-bold tracking-tighter tabular-nums">
+              <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+                <span className="text-base md:text-2xl font-mono text-brand-accent">TSh</span>
+                <span className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tighter tabular-nums break-all">
                   {totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
               </div>
