@@ -1125,7 +1125,7 @@ export default function App() {
         style={{
           backgroundImage: `url(${tradexpartBg})`,
           backgroundRepeat: 'repeat',
-          backgroundSize: '440px auto',
+          backgroundSize: '704px 384px',
           opacity: theme === 'dark' ? 0.22 : 0.4,
           filter: theme === 'dark' ? 'grayscale(1) invert(1)' : 'none',
         }}
