@@ -31,6 +31,11 @@ export default defineConfig(({mode}) => {
           // App shell only — no runtime caching of Supabase requests, so data
           // always comes from the network fresh (installable, not offline).
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          // Activate a new service worker as soon as it's installed instead of
+          // waiting for every open tab to close — otherwise deploys can appear
+          // to "not work" even after a hard refresh.
+          skipWaiting: true,
+          clientsClaim: true,
         },
       }),
     ],

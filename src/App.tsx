@@ -1120,16 +1120,16 @@ export default function App() {
   return (
     <div className="relative z-0 w-full max-w-[100vw] min-h-screen text-white font-sans selection:bg-brand-accent selection:text-black">
 
-      {theme === 'light' && (
-        <div
-          className="fixed inset-0 -z-10 opacity-[0.16] pointer-events-none"
-          style={{
-            backgroundImage: `url(${tradexpartBg})`,
-            backgroundRepeat: 'repeat',
-            backgroundSize: '440px auto',
-          }}
-        />
-      )}
+      <div
+        className="fixed inset-0 -z-10 pointer-events-none"
+        style={{
+          backgroundImage: `url(${tradexpartBg})`,
+          backgroundRepeat: 'repeat',
+          backgroundSize: '440px auto',
+          opacity: theme === 'dark' ? 0.22 : 0.4,
+          filter: theme === 'dark' ? 'grayscale(1) invert(1)' : 'none',
+        }}
+      />
 
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b border-brand-border w-full max-w-[100vw] overflow-hidden">
