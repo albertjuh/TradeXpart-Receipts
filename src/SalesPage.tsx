@@ -126,42 +126,42 @@ export default function SalesPage({
       </div>
 
       {/* Bento summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="glass rounded-3xl p-8 relative overflow-hidden">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="p-2 bg-brand-accent/10 rounded-lg">
-              <TrendingUp className="w-4 h-4 text-brand-accent" />
+      <div className="grid grid-cols-2 gap-3 md:gap-4">
+        <div className="glass rounded-2xl md:rounded-3xl p-4 sm:p-6 md:p-8 relative overflow-hidden min-w-0">
+          <div className="flex items-center gap-2 mb-3 sm:mb-5 md:mb-8">
+            <div className="p-1.5 md:p-2 bg-brand-accent/10 rounded-lg">
+              <TrendingUp className="w-3.5 h-3.5 md:w-4 md:h-4 text-brand-accent" />
             </div>
-            <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Total Revenue</span>
+            <span className="text-[9px] sm:text-xs font-mono text-brand-text-muted uppercase tracking-widest">Total Revenue</span>
           </div>
-          <div className="flex items-baseline gap-2 flex-wrap min-w-0">
-            <span className="text-base md:text-2xl font-mono text-brand-accent">TSh</span>
-            <span className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter tabular-nums break-all">
+          <div className="flex items-baseline gap-1.5 md:gap-2 flex-wrap min-w-0">
+            <span className="text-xs sm:text-base md:text-2xl font-mono text-brand-accent">TSh</span>
+            <span className="text-lg sm:text-3xl md:text-6xl font-bold tracking-tighter tabular-nums break-all">
               {totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
           {hasForeignSales && (
-            <div className="mt-6 flex items-center gap-1 text-[10px] font-mono text-amber-400 uppercase tracking-widest">
+            <div className="mt-3 md:mt-6 flex items-center gap-1 text-[8px] sm:text-[10px] font-mono text-amber-400 uppercase tracking-widest">
               <span>●</span>
               <span>Converted to TSh</span>
             </div>
           )}
         </div>
 
-        <div className="glass rounded-3xl p-8 relative overflow-hidden">
-          <div className="flex items-center gap-2 mb-8">
-            <div className={`p-2 rounded-lg ${netProfit >= 0 ? 'bg-brand-accent/10' : 'bg-red-500/10'}`}>
-              <DollarSign className={`w-4 h-4 ${netProfit >= 0 ? 'text-brand-accent' : 'text-red-400'}`} />
+        <div className="glass rounded-2xl md:rounded-3xl p-4 sm:p-6 md:p-8 relative overflow-hidden min-w-0">
+          <div className="flex items-center gap-2 mb-3 sm:mb-5 md:mb-8">
+            <div className={`p-1.5 md:p-2 rounded-lg ${netProfit >= 0 ? 'bg-brand-accent/10' : 'bg-red-500/10'}`}>
+              <DollarSign className={`w-3.5 h-3.5 md:w-4 md:h-4 ${netProfit >= 0 ? 'text-brand-accent' : 'text-red-400'}`} />
             </div>
-            <span className="text-xs font-mono text-brand-text-muted uppercase tracking-widest">Net Profit</span>
+            <span className="text-[9px] sm:text-xs font-mono text-brand-text-muted uppercase tracking-widest">Net Profit</span>
           </div>
-          <div className="flex items-baseline gap-2 flex-wrap min-w-0">
-            <span className={`text-base md:text-2xl font-mono ${netProfit >= 0 ? 'text-brand-accent' : 'text-red-400'}`}>TSh</span>
-            <span className={`text-4xl sm:text-5xl md:text-6xl font-bold tracking-tighter tabular-nums break-all ${netProfit >= 0 ? 'text-white' : 'text-red-400'}`}>
+          <div className="flex items-baseline gap-1.5 md:gap-2 flex-wrap min-w-0">
+            <span className={`text-xs sm:text-base md:text-2xl font-mono ${netProfit >= 0 ? 'text-brand-accent' : 'text-red-400'}`}>TSh</span>
+            <span className={`text-lg sm:text-3xl md:text-6xl font-bold tracking-tighter tabular-nums break-all ${netProfit >= 0 ? 'text-white' : 'text-red-400'}`}>
               {netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
-          <div className="mt-6 text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
+          <div className="mt-3 md:mt-6 text-[8px] sm:text-[10px] font-mono text-brand-text-muted uppercase tracking-widest">
             Revenue minus total expenses
           </div>
         </div>
