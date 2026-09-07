@@ -45,7 +45,8 @@ const handler = async (req, res) => {
     try {
       parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
     } catch {
-      return res.status(200).json({ error: 'Could not parse response', raw });
+      console.error('parse-receipt-text: model returned non-JSON:', raw);
+      return res.status(502).json({ error: 'Model returned non-JSON output', detail: raw.slice(0, 300) });
     }
 
     return res.status(200).json(Array.isArray(parsed) ? parsed : [parsed]);

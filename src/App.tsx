@@ -103,6 +103,7 @@ export default function App() {
   const [ocrPreview, setOcrPreview] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [textParseError, setTextParseError] = useState<string | null>(null);
   const [ocrFields, setOcrFields] = useState<Record<string, string> | null>(null);
 
   // Modal tab + text-parse state
@@ -676,6 +677,7 @@ export default function App() {
     setOcrStatus('idle');
     setOcrFields(null);
     setParsedItems([]);
+    setTextParseError(null);
 
     try {
       console.log('Calling API /api/parse-receipt-text ...');
@@ -705,10 +707,15 @@ export default function App() {
         setParsedItems(items);
         setSelectedItems(new Set(items.map((_, i) => i)));
       } else {
+        const detail = !resp.ok
+          ? ((data && (data.detail || data.error)) ? `${data.error ?? 'Request failed'}: ${String(data.detail ?? '').slice(0, 200)}` : `Server error (${resp.status})`)
+          : 'The AI returned no items — try rephrasing or adding more detail';
+        setTextParseError(detail);
         setOcrStatus('error');
       }
     } catch (err) {
       console.log('Text parse API call failed:', err);
+      setTextParseError(err instanceof Error ? err.message : 'Network error');
       setOcrStatus('error');
     } finally {
       setOcrLoading(false);
@@ -2244,8 +2251,8 @@ export default function App() {
                         Parse with AI
                       </button>
                       {ocrStatus === 'error' && (
-                        <p className="text-center text-[9px] font-mono text-red-400 uppercase tracking-widest">
-                          Could not parse — try rephrasing or adding more detail
+                        <p className="text-center text-[9px] font-mono text-red-400 uppercase tracking-widest break-words">
+                          {textParseError ?? 'Could not parse — try rephrasing or adding more detail'}
                         </p>
                       )}
                     </motion.div>
