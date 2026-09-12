@@ -12,34 +12,39 @@ const handler = async (req, res) => {
     const { text } = req.body;
     if (!text) return res.status(400).json({ error: 'Missing text' });
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: `Parse this receipt description into structured data. Return ONLY valid JSON array where each item has: vendor (string or null), amount (number), currency (string, default TZS), date (string YYYY-MM-DD or null), category (one of: Food, Transport, Utilities, Supplies, Services, Accommodation, Other), payment_method (string or null), notes (string or null), account_type (string: "Business", "Personal", or "unclear"). IMPORTANT: vendor means the business where money was spent. Payment facilitators like M-Pesa, Airtel Money, Mixx by Yas, TigoPesa, Halopesa, NMB, CRDB are NOT vendors — they are payment methods. If the actual vendor is unclear, use null for vendor. For account_type: use "Business" if fuel/petrol, office supplies, shipping/freight, customs/port fees, raw materials, equipment, wholesale purchases, amount over 100000 TZS, or vendor is clearly a company/institution. Use "Personal" if restaurant/cafe/food (under 50000 TZS), supermarket groceries, personal transport (taxi/uber/bolt), entertainment, or clothing. Use "unclear" if genuinely ambiguous. If multiple items mentioned, return multiple objects in the array. No explanation, just the JSON array.\n\nReceipt: ${text}`,
-        }],
-      }),
-    });
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Parse this receipt description into structured data. Return ONLY valid JSON array where each item has: vendor (string or null), amount (number), currency (string, default TZS), date (string YYYY-MM-DD or null), category (one of: Food, Transport, Utilities, Supplies, Services, Accommodation, Other), payment_method (string or null), notes (string or null), account_type (string: "Business", "Personal", or "unclear"). IMPORTANT: vendor means the business where money was spent. Payment facilitators like M-Pesa, Airtel Money, Mixx by Yas, TigoPesa, Halopesa, NMB, CRDB are NOT vendors — they are payment methods. If the actual vendor is unclear, use null for vendor. For account_type: use "Business" if fuel/petrol, office supplies, shipping/freight, customs/port fees, raw materials, equipment, wholesale purchases, amount over 100000 TZS, or vendor is clearly a company/institution. Use "Personal" if restaurant/cafe/food (under 50000 TZS), supermarket groceries, personal transport (taxi/uber/bolt), entertainment, or clothing. Use "unclear" if genuinely ambiguous. If multiple items mentioned, return multiple objects in the array. No explanation, just the JSON array.\n\nReceipt: ${text}`,
+            }],
+          }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        }),
+      }
+    );
 
     if (!response.ok) {
       const err = await response.text();
-      console.error('Anthropic error:', err);
-      return res.status(500).json({ error: 'Anthropic API error', detail: err });
+      console.error('Gemini error:', err);
+      return res.status(500).json({ error: 'Gemini API error', detail: err });
     }
 
     const data = await response.json();
-    const raw = data.content?.[0]?.text ?? '[]';
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
 
     let parsed;
     try {
