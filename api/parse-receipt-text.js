@@ -16,7 +16,7 @@ const handler = async (req, res) => {
     if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
       {
         method: 'POST',
         headers: {
@@ -31,7 +31,6 @@ const handler = async (req, res) => {
           }],
           generationConfig: {
             responseMimeType: 'application/json',
-            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       }

@@ -18,7 +18,7 @@ const handler = async (req, res) => {
     const prompt = 'Extract receipt data from this image. Return ONLY valid JSON with these exact fields: vendor (string or null), amount (number), currency (string, default TZS if unclear), date (string YYYY-MM-DD or null), category (one of: Food, Transport, Utilities, Supplies, Services, Accommodation, Other), payment_method (string or null), notes (string or null), account_type (string: "Business", "Personal", or "unclear"). IMPORTANT: vendor means the business where money was spent (restaurant, shop, supplier, service provider). Payment facilitators like M-Pesa, Airtel Money, Mixx by Yas, TigoPesa, Halopesa, NMB, CRDB are NOT vendors — they are payment methods. If the receipt shows a payment app sending money TO a business, the vendor is the DESTINATION business, and the payment_method is the app. If the actual vendor is unclear, use null for vendor. For account_type: use "Business" if fuel/petrol, office supplies, shipping/freight, customs/port fees, raw materials, equipment, wholesale purchases, amount over 100000 TZS, or vendor is clearly a company/institution. Use "Personal" if restaurant/cafe/food (amount under 50000 TZS), supermarket groceries, personal transport (taxi/uber/bolt), entertainment, or clothing. Use "unclear" if genuinely ambiguous. Return ONLY the JSON object, no explanation, no markdown, no code blocks.';
 
     const response = await fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent',
       {
         method: 'POST',
         headers: {
@@ -34,7 +34,6 @@ const handler = async (req, res) => {
           }],
           generationConfig: {
             responseMimeType: 'application/json',
-            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       }
